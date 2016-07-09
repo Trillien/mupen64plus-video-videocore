@@ -117,17 +117,7 @@ static const char *aAText[] =
 	"SHADE",			"ENVIRONMENT",		"1",				"0",
 };
 
-struct VCUnpackedCombiner {
-    uint8_t saRGB;
-    uint8_t saA;
-    uint8_t sbRGB;
-    uint8_t sbA;
-    uint8_t mRGB;
-    uint8_t mA;
-    uint8_t aRGB;
-    uint8_t aA;
-};
-
+#if 0
 static void VCCombiner_ZeroCombineStage(VCColorf *encodedCombine) {
     encodedCombine->r = encodedCombine->g = encodedCombine->b = encodedCombine->a = 0.0;
 }
@@ -379,4 +369,5 @@ void VCCombiner_FillCombinerForRectFill(VCCombiner *vcCombiner, VCColorf *fillCo
                                 G_CCMUX_SHADE,
                                 G_ACMUX_SHADE);
 }
+#endif
 

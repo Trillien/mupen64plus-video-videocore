@@ -8,9 +8,10 @@
 #define VC_N64_WIDTH 320
 #define VC_N64_HEIGHT 240
 
-#define VC_RENDER_COMMAND_NONE              0
-#define VC_RENDER_COMMAND_UPLOAD_TEXTURE    1
-#define VC_RENDER_COMMAND_DRAW_BATCHES      2
+#define VC_RENDER_COMMAND_NONE                      0
+#define VC_RENDER_COMMAND_UPLOAD_TEXTURE            1
+#define VC_RENDER_COMMAND_DRAW_BATCHES              2
+#define VC_RENDER_COMMAND_COMPILE_SHADER_PROGRAM    3
 
 #define VC_TRIANGLE_MODE_NORMAL             0
 #define VC_TRIANGLE_MODE_TEXTURE_RECTANGLE  1
@@ -21,9 +22,12 @@
 #include "VCAtlas.h"
 #include "VCDebugger.h"
 #include "VCGeometry.h"
+#include "VCShaderCompiler.h"
 
 struct Combiner;
 struct SPVertex;
+struct VCShaderProgram;
+struct VCShaderProgramDescriptorLibrary;
 
 struct VCBlendFlags {
     bool zTest;
@@ -33,19 +37,13 @@ struct VCBlendFlags {
     VCRectf viewport;
 };
 
-struct VCCombiner {
-    VCColorf combineA;
-    VCColorf combineB;
-    VCColorf combineC;
-    VCColorf combineD;
-};
-
 struct VCN64Vertex {
     VCPoint4f position;
     VCPoint2f textureUV;
     VCRects texture0Bounds;
     VCRects texture1Bounds;
-    VCCombiner combiner;
+    VCColor shade;
+    uint16_t subprogram;
 };
 
 struct VCBlitVertex {
@@ -58,6 +56,11 @@ struct VCBatch {
     size_t verticesLength;
     size_t verticesCapacity;
     VCBlendFlags blendFlags;
+    union {
+        VCShaderSubprogramDescriptorList list;
+        uint32_t id;
+    } program;
+    bool programIDPresent;
 };
 
 struct VCRenderCommand {
@@ -65,6 +68,8 @@ struct VCRenderCommand {
     VCRectus uv;
     uint8_t *pixels;
     uint32_t elapsedTime;
+    uint32_t shaderProgramID;
+    VCShaderProgram *shaderProgram;
 };
 
 struct VCRenderer {
@@ -90,10 +95,17 @@ struct VCRenderer {
     size_t batchesCapacity;
 
     VCAtlas atlas;
+    VCShaderProgramDescriptorLibrary *shaderProgramDescriptorLibrary;
     VCDebugger *debugger;
 
-    VCProgram n64Program;
     VCProgram blitProgram;
+    GLuint quadVBO;
+
+    VCProgram *shaderPrograms;
+    size_t shaderProgramsLength;
+    size_t shaderProgramsCapacity;
+    char *shaderPreamble;
+    GLuint n64VBO;
 
     GLuint fbo;
     GLuint fboTexture;
@@ -107,15 +119,13 @@ void VCRenderer_CompileShader(GLuint *shader, GLint shaderType, const char *path
 void VCRenderer_AddVertex(VCRenderer *renderer, VCN64Vertex *vertex, VCBlendFlags *blendFlags);
 void VCRenderer_EnqueueCommand(VCRenderer *renderer, VCRenderCommand *command);
 void VCRenderer_SubmitCommands(VCRenderer *renderer);
-void VCRenderer_InitColorCombinerForFill(VCN64Vertex *vertex);
-void VCRenderer_InitColorCombinerForTextureBlit(VCN64Vertex *vertex);
 void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
                                      VCN64Vertex *n64Vertices,
                                      SPVertex *spVertices,
                                      uint32_t *indices,
                                      uint32_t indexCount,
                                      uint8_t mode);
-VCCombiner *VCRenderer_CompileCombiner(Combiner *color, Combiner *alpha);
+void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer);
 
 #endif
 

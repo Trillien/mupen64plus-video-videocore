@@ -7,6 +7,7 @@
 #include "VI.h"
 #include "Combiner.h"
 #include "VCConfig.h"
+#include "VCShaderCompiler.h"
 #include "m64p_plugin.h"
 
 #define MI_INTR_SP 0x01
@@ -108,6 +109,7 @@ EXPORT void CALL ProcessDList(void)
     CheckInterrupts();
 
     VCRenderer *renderer = VCRenderer_SharedRenderer();
+    VCRenderer_CreateNewShaderProgramsIfNecessary(renderer);
     VCRenderCommand command = { VC_RENDER_COMMAND_DRAW_BATCHES, 0 };
     command.elapsedTime = SDL_GetTicks() - beforeProcessTimestamp;
     VCRenderer_EnqueueCommand(renderer, &command);

@@ -26,7 +26,6 @@ struct VCProgram {
     GLuint vertexShader;
     GLuint fragmentShader;
     GLuint program;
-    GLuint vbo;
 };
 
 #endif

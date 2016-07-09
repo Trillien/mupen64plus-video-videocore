@@ -60,6 +60,7 @@ SOURCES_CXX = \
 	VCConfig.cpp \
 	VCDebugger.cpp \
 	VCRenderer.cpp \
+	VCShaderCompiler.cpp \
 	VCUtils.cpp \
 	VI.cpp \
 

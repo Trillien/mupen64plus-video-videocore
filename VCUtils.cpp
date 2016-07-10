@@ -2,9 +2,11 @@
 //
 // Copyright (c) 2016 The mupen64plus-video-videocore Authors
 
+#include "VCUtils.h"
 #include <assert.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -43,28 +45,24 @@ void VCString_ReserveAtLeast(VCString *string, size_t amount) {
     VCString_Reserve(string, VCUtils_NextPowerOfTwo(amount));
 }
 
-void VCString_AppendCString(VCString *string, char *cString) {
-    size_t cStringLength = strlen(c_string);
+void VCString_AppendCString(VCString *string, const char *cString) {
+    size_t cStringLength = strlen(cString);
     VCString_ReserveAtLeast(string, string->len + cStringLength + 1);
     strcpy(&string->ptr[string->len], cString);
     string->len += cStringLength;
+    assert(string->len < string->cap);
 }
 
 size_t VCString_AppendFormat(VCString *string, const char *fmt, ...) {
     va_list ap0, ap1;
     va_start(ap0, fmt);
     va_copy(ap1, ap0);
-    if (string->len + 1 == string->cap)
-        VCString_ReserveAtLeast(string, string->cap + 1);
-    size_t addedLength = vsnprintf(&string->ptr[string->len], string->cap - string->len, fmt, ap0);
-    if (addedLength < string->cap - string->len) {
-        VCString_ReserveAtLeast(string, string->len + addedLength + 1);
-        newLength = vsnprintf(&string->ptr[string->len], string->cap - string->len, fmt, ap1);
-        assert(newLength >= string->cap - string->len);
-    }
-    string->len += addedLength;
-    va_end(ap1);
+    size_t addedLength = vsnprintf(NULL, 0, fmt, ap0);
     va_end(ap0);
+    VCString_ReserveAtLeast(string, string->len + addedLength + 1);
+    string->len += vsnprintf(&string->ptr[string->len], string->cap - string->len, fmt, ap1);
+    assert(string->len < string->cap);
+    va_end(ap1);
     return addedLength;
 }
 

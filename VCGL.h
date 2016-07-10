@@ -9,7 +9,7 @@
 #include <GL/glew.h>
 #endif
 
-#ifdef DEBUG
+#ifdef VCDEBUG
 #define GL(func) \
     do { \
         func; \

@@ -7,13 +7,21 @@
 
 #include "VCCombiner.h"
 #include "VCGeometry.h"
+#include "uthash.h"
 #include <stdint.h>
 
+struct VCShaderProgram;
+struct VCShaderProgramDescriptorLibrary;
+struct VCShaderSubprogram;
+struct VCShaderSubprogramDescriptorListEntry;
+struct VCShaderSubprogramDescriptorTableEntry;
+struct VCShaderSubprogramEntry;
 struct VCString;
 
 struct VCShaderSubprogramContext {
     VCColor primColor;
     VCColor envColor;
+    bool secondCycleEnabled;
 };
 
 struct VCShaderSubprogramDescriptor {
@@ -22,35 +30,46 @@ struct VCShaderSubprogramDescriptor {
     VCShaderSubprogramContext context;
 };
 
+struct VCShaderSubprogramDescriptorTable {
+    VCShaderSubprogramDescriptorTableEntry *entries;
+};
+
 struct VCShaderSubprogramDescriptorList {
-    VCShaderSubprogramDescriptor *descriptors;
-    size_t length;
-    size_t capacity;
+    VCShaderSubprogramDescriptorListEntry *entries;
+    uint32_t length;
 };
 
 struct VCShaderProgramDescriptor {
     VCShaderSubprogramDescriptorList subprogramDescriptors;
+    // Lazily initialized pointer to the actual program.
+    VCShaderProgram *program;
     uint16_t id;
     UT_hash_handle hh;
 };
 
-struct VCShaderProgramDescriptorLibrary {
-    VCShaderProgramDescriptor *shaderProgramDescriptors;
-    size_t shaderProgramDescriptorCount;
-};
-
-struct VCShaderProgram {
-    VCShaderSubprogram *subprograms;
-    size_t subprogramCount;
-};
-
-VCShaderProgramDescriptorLibrary VCShaderCompiler_CreateShaderProgramDescriptorLibrary();
-uint16_t VCShaderCompiler_GetOrCreateShaderProgramDescriptor(
+VCShaderProgramDescriptorLibrary *VCShaderCompiler_CreateShaderProgramDescriptorLibrary();
+uint16_t VCShaderCompiler_GetOrCreateShaderProgramID(
         VCShaderProgramDescriptorLibrary *library,
-        VCShaderSubprogramDescriptorList *subprogramDescriptors);
-VCShaderSubprogramDescriptorList VCShaderCompiler_CreateSubprogramDescriptorList();
+        VCShaderSubprogramDescriptorList *subprogramDescriptors,
+        bool *newlyCreated);
+VCShaderSubprogramDescriptorTable VCShaderCompiler_CreateSubprogramDescriptorTable();
+void VCShaderCompiler_DestroySubprogramDescriptorTable(VCShaderSubprogramDescriptorTable *table);
+VCShaderSubprogramDescriptor VCShaderCompiler_CreateSubprogramDescriptorForCurrentCombiner(
+        VCShaderSubprogramContext *context);
 void VCShaderCompiler_GenerateGLSLFragmentShaderForProgram(VCString *shaderSource,
                                                            VCShaderProgram *program);
+VCShaderSubprogramContext VCShaderCompiler_CreateSubprogramContext(VCColor primColor,
+                                                                   VCColor envColor,
+                                                                   bool secondCycleEnabled);
+uint16_t VCShaderCompiler_GetOrCreateSubprogramID(VCShaderSubprogramDescriptorTable *table,
+                                                  VCShaderSubprogramDescriptor *descriptor);
+VCShaderProgram *VCShaderCompiler_GetOrCreateProgram(VCShaderProgramDescriptor *descriptor);
+VCShaderProgramDescriptor *VCShaderCompiler_GetShaderProgramDescriptorByID(
+        VCShaderProgramDescriptorLibrary *library,
+        uint16_t id);
+VCShaderSubprogramDescriptorList VCShaderCompiler_ConvertSubprogramDescriptorTableToList(
+        VCShaderSubprogramDescriptorTable *table);
+void VCShaderCompiler_DestroySubprogramDescriptorList(VCShaderSubprogramDescriptorList *list);
 
 #endif
 

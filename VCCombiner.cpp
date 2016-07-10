@@ -117,6 +117,30 @@ static const char *aAText[] =
 	"SHADE",			"ENVIRONMENT",		"1",				"0",
 };
 
+void VCCombiner_UnpackCurrentRGBCombiner(VCUnpackedCombiner *cycle0, VCUnpackedCombiner *cycle1) {
+    cycle0->saRGB = saRGBMapping[gDP.combine.saRGB0];
+    cycle0->sbRGB = sbRGBMapping[gDP.combine.sbRGB0];
+    cycle0->mRGB = mRGBMapping[gDP.combine.mRGB0];
+    cycle0->aRGB = aRGBMapping[gDP.combine.aRGB0];
+
+    cycle1->saRGB = saRGBMapping[gDP.combine.saRGB1];
+    cycle1->sbRGB = sbRGBMapping[gDP.combine.sbRGB1];
+    cycle1->mRGB = mRGBMapping[gDP.combine.mRGB1];
+    cycle1->aRGB = aRGBMapping[gDP.combine.aRGB1];
+}
+
+void VCCombiner_UnpackCurrentACombiner(VCUnpackedCombiner *cycle0, VCUnpackedCombiner *cycle1) {
+    cycle0->saA = saAMapping[gDP.combine.saA0];
+    cycle0->sbA = sbAMapping[gDP.combine.sbA0];
+    cycle0->mA = mAMapping[gDP.combine.mA0];
+    cycle0->aA = aAMapping[gDP.combine.aA0];
+
+    cycle1->saA = saAMapping[gDP.combine.saA1];
+    cycle1->sbA = sbAMapping[gDP.combine.sbA1];
+    cycle1->mA = mAMapping[gDP.combine.mA1];
+    cycle1->aA = aAMapping[gDP.combine.aA1];
+}
+
 #if 0
 static void VCCombiner_ZeroCombineStage(VCColorf *encodedCombine) {
     encodedCombine->r = encodedCombine->g = encodedCombine->b = encodedCombine->a = 0.0;
@@ -225,16 +249,8 @@ static void VCCombiner_FillCombineStage(VCColorf *encodedCombine,
 }
 
 static void VCCombiner_SimplifyRGBCombiner(VCUnpackedCombiner *unpacked) {
-    unpacked->saRGB = saRGBMapping[gDP.combine.saRGB0];
-    unpacked->sbRGB = sbRGBMapping[gDP.combine.sbRGB0];
-    unpacked->mRGB = mRGBMapping[gDP.combine.mRGB0];
-    unpacked->aRGB = aRGBMapping[gDP.combine.aRGB0];
-
     VCUnpackedCombiner cycle1;
-    cycle1.saRGB = saRGBMapping[gDP.combine.saRGB1];
-    cycle1.sbRGB = sbRGBMapping[gDP.combine.sbRGB1];
-    cycle1.mRGB = mRGBMapping[gDP.combine.mRGB1];
-    cycle1.aRGB = aRGBMapping[gDP.combine.aRGB1];
+    VCCombiner_UnpackCurrentRGBCombiner(unpacked, &cycle1);
 
     if (unpacked->saRGB == cycle1.saRGB &&
             unpacked->sbRGB == cycle1.sbRGB &&
@@ -318,10 +334,8 @@ static void VCCombiner_SimplifyRGBCombiner(VCUnpackedCombiner *unpacked) {
 }
 
 static void VCCombiner_SimplifyACombiner(VCUnpackedCombiner *unpacked) {
-    unpacked->saA = saAMapping[gDP.combine.saA0];
-    unpacked->sbA = sbAMapping[gDP.combine.sbA0];
-    unpacked->mA = mAMapping[gDP.combine.mA0];
-    unpacked->aA = aAMapping[gDP.combine.aA0];
+    VCUnpackedCombiner cycle1;
+    VCCombiner_UnpackCurrentACombiner(unpacked, &cycle1);
 }
 
 void VCCombiner_FillCombiner(VCCombiner *vcCombiner, VCColorf *shade) {

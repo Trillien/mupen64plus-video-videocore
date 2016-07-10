@@ -57,7 +57,7 @@ struct VCBatch {
     size_t verticesCapacity;
     VCBlendFlags blendFlags;
     union {
-        VCShaderSubprogramDescriptorList list;
+        VCShaderSubprogramDescriptorTable table;
         uint32_t id;
     } program;
     bool programIDPresent;
@@ -94,6 +94,7 @@ struct VCRenderer {
     size_t batchesLength;
     size_t batchesCapacity;
 
+    // For RSP thread only.
     VCAtlas atlas;
     VCShaderProgramDescriptorLibrary *shaderProgramDescriptorLibrary;
     VCDebugger *debugger;

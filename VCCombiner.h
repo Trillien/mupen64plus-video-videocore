@@ -5,6 +5,8 @@
 #ifndef VCCOMBINER_H
 #define VCCOMBINER_H
 
+#include <stdint.h>
+
 struct VCColorf;
 struct VCCombiner;
 
@@ -19,9 +21,14 @@ struct VCUnpackedCombiner {
     uint8_t aA;
 };
 
+void VCCombiner_UnpackCurrentRGBCombiner(VCUnpackedCombiner *cycle0, VCUnpackedCombiner *cycle1);
+void VCCombiner_UnpackCurrentACombiner(VCUnpackedCombiner *cycle0, VCUnpackedCombiner *cycle1);
+
+#if 0
 void VCCombiner_FillCombiner(VCCombiner *combiner, VCColorf *shade);
 void VCCombiner_FillCombinerForTextureBlit(VCCombiner *vcCombiner);
 void VCCombiner_FillCombinerForRectFill(VCCombiner *vcCombiner, VCColorf *fillColor);
+#endif
 
 #endif
 

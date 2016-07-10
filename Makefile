@@ -2,7 +2,7 @@ CC=gcc
 CXX=g++
 
 ifdef DEBUG
-CFLAGS?=-O0 -g
+CFLAGS?=-O0 -g -DVCDEBUG
 else
 CFLAGS?=-O2
 endif
@@ -59,6 +59,7 @@ SOURCES_CXX = \
 	VCCombiner.cpp \
 	VCConfig.cpp \
 	VCDebugger.cpp \
+	VCGeometry.cpp \
 	VCRenderer.cpp \
 	VCShaderCompiler.cpp \
 	VCUtils.cpp \

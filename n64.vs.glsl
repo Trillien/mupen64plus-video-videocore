@@ -5,7 +5,7 @@ attribute vec2 aTextureUv;
 attribute vec4 aTexture0Bounds;
 attribute vec4 aTexture1Bounds;
 attribute vec4 aShade;
-attribute float aProgram;
+attribute float aSubprogram;
 
 varying vec2 vTextureUv;
 varying vec4 vTexture0Bounds;

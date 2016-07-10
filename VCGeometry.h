@@ -109,5 +109,7 @@ struct VCColorf {
     float a;
 };
 
+VCColor VCColor_ColorFToColor(VCColorf colorf);
+
 #endif
 

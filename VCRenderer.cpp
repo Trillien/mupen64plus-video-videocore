@@ -14,6 +14,7 @@
 #include "VCCombiner.h"
 #include "VCConfig.h"
 #include "VCGL.h"
+#include "VCGeometry.h"
 #include "VCRenderer.h"
 #include "VCShaderCompiler.h"
 #include "VCUtils.h"
@@ -48,6 +49,7 @@ static char *VCRenderer_Slurp(const char *path) {
         abort();
     }
     buffer[st.st_size] = '\0';
+    fclose(f);
     return buffer;
 }
 
@@ -55,9 +57,24 @@ void VCRenderer_CompileShaderFromCString(GLuint *shader, GLint shaderType, const
     *shader = glCreateShader(shaderType);
     GL(glShaderSource(*shader, 1, &source, NULL));
     GL(glCompileShader(*shader));
+#ifdef VCDEBUG
+    GLint compileStatus = 0;
+    GL(glGetShaderiv(*shader, GL_COMPILE_STATUS, &compileStatus));
+    if (compileStatus != GL_TRUE) {
+        fprintf(stderr, "Failed to compile shader!\n");
+        GLint infoLogLength = 0;
+        GL(glGetShaderiv(*shader, GL_INFO_LOG_LENGTH, &infoLogLength));
+        char *infoLog = (char *)malloc(infoLogLength + 1);
+        GL(glGetShaderInfoLog(*shader, (GLsizei)infoLogLength, NULL, infoLog));
+        infoLog[infoLogLength] = '\0';
+        fprintf(stderr, "%s\n", infoLog);
+        abort();
+    }
+#endif
 }
 
-void VCRenderer_CompileShader(GLuint *shader, GLint shaderType, const char *filename) {
+// Result is null-terminated. Caller is responsible for freeing it. Exits app on failure.
+static char *VCRenderer_SlurpShaderSource(const char *filename) {
     char *path = (char *)malloc(PATH_MAX + 1);
     char *dataHome = getenv("XDG_DATA_HOME");
     if (dataHome == NULL || dataHome[0] == '\0') {
@@ -70,30 +87,37 @@ void VCRenderer_CompileShader(GLuint *shader, GLint shaderType, const char *file
     }
 
     char *source = VCRenderer_Slurp(path);
-    if (source == NULL) {
-        const char *dataDirsLocation = getenv("XDG_DATA_DIRS");
-        if (dataDirsLocation == NULL || dataDirsLocation[0] == '\0')
-            dataDirsLocation = "/usr/local/share/:/usr/share/";
-        char *dataDirs = strdup(dataDirsLocation);
-        do {
-            char *dataDir = xstrsep(&dataDirs, ":");
-            if (dataDir == NULL) {
-                fprintf(stderr,
-                        "video error: couldn't find shader `%s`: try installing it to "
-                        "`~/.local/share/mupen64plus/videocore/%s` or "
-                        "`/usr/local/share/mupen64plus/videocore/%s`\n",
-                        filename,
-                        filename,
-                        filename);
-                exit(1);
-            }
-            snprintf(path, PATH_MAX, "%s/mupen64plus/videocore/%s", dataDir, filename);
-            source = VCRenderer_Slurp(path);
-        } while (source == NULL);
+    if (source != NULL)
+        return source;
+
+    const char *dataDirsLocation = getenv("XDG_DATA_DIRS");
+    if (dataDirsLocation == NULL || dataDirsLocation[0] == '\0')
+        dataDirsLocation = "/usr/local/share/:/usr/share/";
+    char *dataDirs = strdup(dataDirsLocation);
+    char *dataDir;
+    while ((dataDir = xstrsep(&dataDirs, ":")) != NULL) {
+        snprintf(path, PATH_MAX, "%s/mupen64plus/videocore/%s", dataDir, filename);
+        source = VCRenderer_Slurp(path);
+        if (source != NULL)
+            return source;
     }
 
-    free(path);
+    snprintf(path, PATH_MAX, "./%s", filename);
+    if ((source = VCRenderer_Slurp(path)) != NULL)
+        return source;
 
+    fprintf(stderr,
+            "video error: couldn't find shader `%s`: try installing it to "
+            "`~/.local/share/mupen64plus/videocore/%s` or "
+            "`/usr/local/share/mupen64plus/videocore/%s`\n",
+            filename,
+            filename,
+            filename);
+    exit(1);
+}
+
+void VCRenderer_CompileShader(GLuint *shader, GLint shaderType, const char *filename) {
+    char *source = VCRenderer_SlurpShaderSource(filename);
     VCRenderer_CompileShaderFromCString(shader, shaderType, source);
 }
 
@@ -118,6 +142,8 @@ static void VCRenderer_CompileAndLinkShaders(VCRenderer *renderer) {
     GL(glBindAttribLocation(renderer->blitProgram.program, 1, "aTextureUv"));
     GL(glLinkProgram(renderer->blitProgram.program));
     GL(glUseProgram(renderer->blitProgram.program));
+
+    renderer->shaderPreamble = VCRenderer_SlurpShaderSource("n64.inc.fs.glsl");
 }
 
 static void VCRenderer_CreateVBOs(VCRenderer *renderer) {
@@ -252,7 +278,7 @@ static void VCRenderer_AddNewBatch(VCRenderer *renderer, VCBlendFlags *blendFlag
     batch->verticesLength = 0;
     batch->verticesCapacity = INITIAL_N64_VERTEX_STORAGE_CAPACITY;
     batch->blendFlags = *blendFlags;
-    batch->program.list = VCShaderCompiler_CreateSubprogramDescriptorList();
+    batch->program.table = VCShaderCompiler_CreateSubprogramDescriptorTable();
     batch->programIDPresent = false;
 }
 
@@ -275,6 +301,24 @@ void VCRenderer_AddVertex(VCRenderer *renderer, VCN64Vertex *vertex, VCBlendFlag
         VCRenderer_AddNewBatch(renderer, blendFlags);
 
     VCBatch *batch = &renderer->batches[renderer->batchesLength - 1];
+
+    VCColorf envColor = { gDP.envColor.r, gDP.envColor.g, gDP.envColor.b, gDP.envColor.a };
+    VCColorf primColor = {
+        gDP.primColor.r,
+        gDP.primColor.g,
+        gDP.primColor.b,
+        gDP.primColor.a
+    };
+    VCShaderSubprogramContext subprogramContext =
+        VCShaderCompiler_CreateSubprogramContext(VCColor_ColorFToColor(envColor),
+                                                 VCColor_ColorFToColor(primColor),
+                                                 gDP.otherMode.cycleType == G_CYC_2CYCLE);
+    VCShaderSubprogramDescriptor subprogramDescriptor =
+        VCShaderCompiler_CreateSubprogramDescriptorForCurrentCombiner(&subprogramContext);
+    assert(!batch->programIDPresent);
+    vertex->subprogram = VCShaderCompiler_GetOrCreateSubprogramID(&batch->program.table,
+                                                                  &subprogramDescriptor);
+
     if (batch->verticesLength >= batch->verticesCapacity) {
         batch->verticesCapacity *= 2;
         batch->vertices =
@@ -301,13 +345,13 @@ VCRenderer *VCRenderer_SharedRenderer() {
 static void VCRenderer_CompileShaderProgram(VCRenderer *renderer,
                                             VCShaderProgram *shaderProgram,
                                             uint32_t shaderProgramID) {
-    if (renderer->shaderProgramsCapacity < shaderProgramID) {
+    if (renderer->shaderProgramsCapacity < shaderProgramID + 1) {
         renderer->shaderPrograms = (VCProgram *)realloc(renderer->shaderPrograms,
-                                                        sizeof(VCProgram) * shaderProgramID);
-        renderer->shaderProgramsCapacity = shaderProgramID;
+                                                        sizeof(VCProgram) * (shaderProgramID + 1));
+        renderer->shaderProgramsCapacity = shaderProgramID + 1;
     }
 
-    for (size_t i = renderer->shaderProgramsLength; i < shaderProgramID; i++) {
+    for (size_t i = renderer->shaderProgramsLength; i < shaderProgramID + 1; i++) {
         renderer->shaderPrograms[i].vertexShader = 0;
         renderer->shaderPrograms[i].fragmentShader = 0;
         renderer->shaderPrograms[i].program = 0;
@@ -317,12 +361,16 @@ static void VCRenderer_CompileShaderProgram(VCRenderer *renderer,
     renderer->shaderProgramsLength = shaderProgramID + 1;
 
     VCRenderer_CompileShader(&program->vertexShader, GL_VERTEX_SHADER, "n64.vs.glsl");
-    VCRenderer_CreateProgram(&program->program, program->vertexShader, program->fragmentShader);
 
     VCString fragmentShaderSource = VCString_Create();
     VCString_AppendCString(&fragmentShaderSource, renderer->shaderPreamble);
     VCShaderCompiler_GenerateGLSLFragmentShaderForProgram(&fragmentShaderSource, shaderProgram);
+    printf("New program:\n%s\n// end\n", fragmentShaderSource.ptr);
+    VCRenderer_CompileShaderFromCString(&program->fragmentShader,
+                                        GL_FRAGMENT_SHADER,
+                                        fragmentShaderSource.ptr);
 
+    VCRenderer_CreateProgram(&program->program, program->vertexShader, program->fragmentShader);
     GL(glBindAttribLocation(program->program, 0, "aPosition"));
     GL(glBindAttribLocation(program->program, 1, "aTextureUv"));
     GL(glBindAttribLocation(program->program, 2, "aTexture0Bounds"));
@@ -447,6 +495,9 @@ static void VCRenderer_Init(VCRenderer *renderer, SDL_Window *window, SDL_GLCont
     VCAtlas_Create(&renderer->atlas);
     VCRenderer_SetUniforms(renderer);
 
+    renderer->shaderProgramDescriptorLibrary =
+        VCShaderCompiler_CreateShaderProgramDescriptorLibrary();
+
     renderer->debugger = (VCDebugger *)malloc(sizeof(VCDebugger));
     if (renderer->debugger == NULL)
         abort();
@@ -514,8 +565,9 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
     uint32_t totalVertexCount = 0;
     for (uint32_t batchIndex = 0; batchIndex < batchesLength; batchIndex++) {
         VCBatch *batch = &batches[batchIndex];
-        assert(batch->programID < renderer->shaderProgramsLength);
-        GL(glUseProgram(renderer->shaderPrograms[batch->programID]));
+        assert(batch->programIDPresent);
+        assert(batch->program.id < renderer->shaderProgramsLength);
+        GL(glUseProgram(renderer->shaderPrograms[batch->program.id].program));
 
         GL(glDepthMask(batch->blendFlags.zUpdate ? GL_TRUE : GL_FALSE));
         GL(glDepthFunc(batch->blendFlags.zTest ? GL_LESS : GL_ALWAYS));
@@ -587,7 +639,6 @@ static void VCRenderer_Present(VCRenderer *renderer) {
 void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
                                      VCN64Vertex *n64Vertices,
                                      SPVertex *spVertices,
-                                     VCShaderSubprogramDescriptorList *subprogramDescriptors,
                                      uint32_t *indices,
                                      uint32_t indexCount,
                                      uint8_t mode) {
@@ -640,15 +691,7 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
         VCAtlas_FillTextureBounds(&n64Vertex->texture1Bounds, &texture1Info);
 
         VCColorf shadeColor = { spVertex->r, spVertex->g, spVertex->b, spVertex->a };
-        VCShaderSubprogramContext subprogramContext =
-            VCShaderCompiler_CreateSubprogramContext(gSP.envColor, gSP.primColor);
-        VCShaderSubprogramDescriptor subprogramDescriptor =
-            VCShaderCompiler_CreateSubprogramDescriptorForCombiner(&subprogramContext,
-                                                                   &n64Vertex->combiner);
-        n64Vertex->subprogramID =
-            VCShaderCompiler_GetOrCreateSubprogramID(subprogramDescriptorList,
-                                                     &subprogramDescriptor);
-
+        n64Vertex->shade = VCColor_ColorFToColor(shadeColor);
 #if 0
         switch (mode) {
         case VC_TRIANGLE_MODE_NORMAL:
@@ -667,22 +710,31 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
 
 void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer) {
     for (size_t batchIndex = 0; batchIndex < renderer->batchesLength; batchIndex++) {
-        VCBatch *batch = &renderer->batches[renderer->batchIndex];
+        VCBatch *batch = &renderer->batches[batchIndex];
         bool newlyCreated = false;
-        uint32_t programID = VCShaderCompiler_GetOrCreateShaderProgramID(&renderer->shaderLibrary,
-                                                                         batch->program.list,
-                                                                         &newlyCreated);
-        VCShaderCompiler_DestroyShaderSubprogramDescriptorList(batch->program.list);
+        VCShaderSubprogramDescriptorList list =
+            VCShaderCompiler_ConvertSubprogramDescriptorTableToList(&batch->program.table);
+        VCShaderCompiler_DestroySubprogramDescriptorTable(&batch->program.table);
+        uint32_t programID =
+            VCShaderCompiler_GetOrCreateShaderProgramID(renderer->shaderProgramDescriptorLibrary,
+                                                        &list,
+                                                        &newlyCreated);
+        VCShaderCompiler_DestroySubprogramDescriptorList(&list);
         batch->program.id = programID;
-        batch->programIDPresent = false;
+        batch->programIDPresent = true;
 
         if (!newlyCreated)
             continue;
+
+        VCShaderProgramDescriptor *shaderProgramDescriptor =
+            VCShaderCompiler_GetShaderProgramDescriptorByID(
+                    renderer->shaderProgramDescriptorLibrary,
+                    programID);
+
         VCRenderCommand command;
         command.command = VC_RENDER_COMMAND_COMPILE_SHADER_PROGRAM;
         command.shaderProgramID = programID;
-        command.shaderProgram = VCShaderCompiler_GetShaderProgram(&renderer->shaderLibrary,
-                                                                  programID);
+        command.shaderProgram = VCShaderCompiler_GetOrCreateProgram(shaderProgramDescriptor);
         VCRenderer_EnqueueCommand(renderer, &command);
     }
 }

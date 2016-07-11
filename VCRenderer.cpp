@@ -278,7 +278,7 @@ static void VCRenderer_AddNewBatch(VCRenderer *renderer, VCBlendFlags *blendFlag
     batch->verticesLength = 0;
     batch->verticesCapacity = INITIAL_N64_VERTEX_STORAGE_CAPACITY;
     batch->blendFlags = *blendFlags;
-    batch->program.table = VCShaderCompiler_CreateSubprogramDescriptorTable();
+    batch->program.table = VCShaderCompiler_CreateSubprogramSignatureTable();
     batch->programIDPresent = false;
 }
 
@@ -313,11 +313,13 @@ void VCRenderer_AddVertex(VCRenderer *renderer, VCN64Vertex *vertex, VCBlendFlag
         VCShaderCompiler_CreateSubprogramContext(VCColor_ColorFToColor(envColor),
                                                  VCColor_ColorFToColor(primColor),
                                                  gDP.otherMode.cycleType == G_CYC_2CYCLE);
-    VCShaderSubprogramDescriptor subprogramDescriptor =
-        VCShaderCompiler_CreateSubprogramDescriptorForCurrentCombiner(&subprogramContext);
+    VCShaderSubprogramSignature subprogramSignature =
+        VCShaderCompiler_GetOrCreateSubprogramSignatureForCurrentCombiner(
+                renderer->shaderSubprogramLibrary,
+                &subprogramContext);
     assert(!batch->programIDPresent);
     vertex->subprogram = VCShaderCompiler_GetOrCreateSubprogramID(&batch->program.table,
-                                                                  &subprogramDescriptor);
+                                                                  &subprogramSignature);
 
     if (batch->verticesLength >= batch->verticesCapacity) {
         batch->verticesCapacity *= 2;
@@ -495,6 +497,7 @@ static void VCRenderer_Init(VCRenderer *renderer, SDL_Window *window, SDL_GLCont
     VCAtlas_Create(&renderer->atlas);
     VCRenderer_SetUniforms(renderer);
 
+    renderer->shaderSubprogramLibrary = VCShaderCompiler_CreateSubprogramLibrary();
     renderer->shaderProgramDescriptorLibrary =
         VCShaderCompiler_CreateShaderProgramDescriptorLibrary();
 
@@ -712,14 +715,14 @@ void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer) {
     for (size_t batchIndex = 0; batchIndex < renderer->batchesLength; batchIndex++) {
         VCBatch *batch = &renderer->batches[batchIndex];
         bool newlyCreated = false;
-        VCShaderSubprogramDescriptorList list =
-            VCShaderCompiler_ConvertSubprogramDescriptorTableToList(&batch->program.table);
-        VCShaderCompiler_DestroySubprogramDescriptorTable(&batch->program.table);
+        VCShaderSubprogramSignatureList list =
+            VCShaderCompiler_ConvertSubprogramSignatureTableToList(&batch->program.table);
+        VCShaderCompiler_DestroySubprogramSignatureTable(&batch->program.table);
         uint32_t programID =
             VCShaderCompiler_GetOrCreateShaderProgramID(renderer->shaderProgramDescriptorLibrary,
                                                         &list,
                                                         &newlyCreated);
-        VCShaderCompiler_DestroySubprogramDescriptorList(&list);
+        VCShaderCompiler_DestroySubprogramSignatureList(&list);
         batch->program.id = programID;
         batch->programIDPresent = true;
 
@@ -734,7 +737,9 @@ void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer) {
         VCRenderCommand command;
         command.command = VC_RENDER_COMMAND_COMPILE_SHADER_PROGRAM;
         command.shaderProgramID = programID;
-        command.shaderProgram = VCShaderCompiler_GetOrCreateProgram(shaderProgramDescriptor);
+        command.shaderProgram =
+            VCShaderCompiler_GetOrCreateProgram(renderer->shaderSubprogramLibrary,
+                                                shaderProgramDescriptor);
         VCRenderer_EnqueueCommand(renderer, &command);
     }
 }

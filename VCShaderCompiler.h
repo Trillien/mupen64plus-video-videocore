@@ -7,16 +7,17 @@
 
 #include "VCCombiner.h"
 #include "VCGeometry.h"
+#include "VCUtils.h"
 #include "uthash.h"
 #include <stdint.h>
 
 struct VCShaderProgram;
 struct VCShaderProgramDescriptorLibrary;
 struct VCShaderSubprogram;
-struct VCShaderSubprogramDescriptorListEntry;
-struct VCShaderSubprogramDescriptorTableEntry;
+struct VCShaderSubprogramLibrary;
+struct VCShaderSubprogramSignatureListEntry;
+struct VCShaderSubprogramSignatureTableEntry;
 struct VCShaderSubprogramEntry;
-struct VCString;
 
 struct VCShaderSubprogramContext {
     VCColor primColor;
@@ -24,23 +25,35 @@ struct VCShaderSubprogramContext {
     bool secondCycleEnabled;
 };
 
-struct VCShaderSubprogramDescriptor {
+struct VCShaderSubprogramSignatureTable {
+    VCShaderSubprogramSignatureTableEntry *entries;
+};
+
+struct VCShaderSubprogramSignatureList {
+    VCShaderSubprogramSignatureListEntry *entries;
+    uint32_t length;
+};
+
+struct VCShaderSubprogramSource {
     VCUnpackedCombiner cycle0;
     VCUnpackedCombiner cycle1;
     VCShaderSubprogramContext context;
 };
 
-struct VCShaderSubprogramDescriptorTable {
-    VCShaderSubprogramDescriptorTableEntry *entries;
+struct VCShaderSubprogramSignature {
+    VCString serializedData;
+    VCShaderSubprogramSource source;
+    UT_hash_handle hh;
 };
 
-struct VCShaderSubprogramDescriptorList {
-    VCShaderSubprogramDescriptorListEntry *entries;
-    uint32_t length;
+struct VCShaderProgramSignature {
+    VCString serializedData;
+    UT_hash_handle hh;
 };
 
 struct VCShaderProgramDescriptor {
-    VCShaderSubprogramDescriptorList subprogramDescriptors;
+    VCShaderProgramSignature programSignature;
+    VCShaderSubprogramSignatureList subprogramSignatures;
     // Lazily initialized pointer to the actual program.
     VCShaderProgram *program;
     uint16_t id;
@@ -50,26 +63,33 @@ struct VCShaderProgramDescriptor {
 VCShaderProgramDescriptorLibrary *VCShaderCompiler_CreateShaderProgramDescriptorLibrary();
 uint16_t VCShaderCompiler_GetOrCreateShaderProgramID(
         VCShaderProgramDescriptorLibrary *library,
-        VCShaderSubprogramDescriptorList *subprogramDescriptors,
+        VCShaderSubprogramSignatureList *subprogramDescriptors,
         bool *newlyCreated);
-VCShaderSubprogramDescriptorTable VCShaderCompiler_CreateSubprogramDescriptorTable();
-void VCShaderCompiler_DestroySubprogramDescriptorTable(VCShaderSubprogramDescriptorTable *table);
-VCShaderSubprogramDescriptor VCShaderCompiler_CreateSubprogramDescriptorForCurrentCombiner(
+VCShaderSubprogramSignatureTable VCShaderCompiler_CreateSubprogramSignatureTable();
+void VCShaderCompiler_DestroySubprogramSignatureTable(VCShaderSubprogramSignatureTable *table);
+VCShaderSubprogramSignature VCShaderCompiler_CreateSubprogramSignatureForCurrentCombiner(
         VCShaderSubprogramContext *context);
 void VCShaderCompiler_GenerateGLSLFragmentShaderForProgram(VCString *shaderSource,
                                                            VCShaderProgram *program);
 VCShaderSubprogramContext VCShaderCompiler_CreateSubprogramContext(VCColor primColor,
                                                                    VCColor envColor,
                                                                    bool secondCycleEnabled);
-uint16_t VCShaderCompiler_GetOrCreateSubprogramID(VCShaderSubprogramDescriptorTable *table,
-                                                  VCShaderSubprogramDescriptor *descriptor);
-VCShaderProgram *VCShaderCompiler_GetOrCreateProgram(VCShaderProgramDescriptor *descriptor);
+VCShaderSubprogramLibrary *VCShaderCompiler_CreateSubprogramLibrary();
+uint16_t VCShaderCompiler_GetOrCreateSubprogramID(VCShaderSubprogramSignatureTable *table,
+                                                  VCShaderSubprogramSignature *descriptor);
+VCShaderProgram *VCShaderCompiler_GetOrCreateProgram(
+        VCShaderSubprogramLibrary *subprogramLibrary,
+        VCShaderProgramDescriptor *programDescriptor);
 VCShaderProgramDescriptor *VCShaderCompiler_GetShaderProgramDescriptorByID(
         VCShaderProgramDescriptorLibrary *library,
         uint16_t id);
-VCShaderSubprogramDescriptorList VCShaderCompiler_ConvertSubprogramDescriptorTableToList(
-        VCShaderSubprogramDescriptorTable *table);
-void VCShaderCompiler_DestroySubprogramDescriptorList(VCShaderSubprogramDescriptorList *list);
+VCShaderSubprogramSignatureList VCShaderCompiler_ConvertSubprogramSignatureTableToList(
+        VCShaderSubprogramSignatureTable *table);
+void VCShaderCompiler_DestroySubprogramSignatureList(VCShaderSubprogramSignatureList *list);
+VCShaderSubprogramSignature VCShaderCompiler_GetOrCreateSubprogramSignatureForCurrentCombiner(
+        VCShaderSubprogramLibrary *library,
+        VCShaderSubprogramContext *context);
+void VCShaderCompiler_DestroySubprogramSignature(VCShaderSubprogramSignature *signature);
 
 #endif
 

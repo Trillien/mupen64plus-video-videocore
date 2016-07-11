@@ -34,6 +34,15 @@ void VCString_Destroy(VCString *string) {
     string->cap = 0;
 }
 
+VCString VCString_Duplicate(VCString *string) {
+    VCString newString;
+    newString.len = string->len;
+    newString.cap = newString.len + 1;
+    newString.ptr = (char *)malloc(newString.cap);
+    memcpy(newString.ptr, string->ptr, newString.cap);
+    return newString;
+}
+
 void VCString_Reserve(VCString *string, size_t amount) {
     if (string->cap >= amount)
         return;
@@ -43,6 +52,18 @@ void VCString_Reserve(VCString *string, size_t amount) {
 
 void VCString_ReserveAtLeast(VCString *string, size_t amount) {
     VCString_Reserve(string, VCUtils_NextPowerOfTwo(amount));
+}
+
+void VCString_AppendString(VCString *string, const VCString *other) {
+    VCString_AppendBytes(string, other->ptr, other->len);
+}
+
+void VCString_AppendBytes(VCString *string, const void *bytes, size_t size) {
+    VCString_ReserveAtLeast(string, string->len + size + 1);
+    memcpy(&string->ptr[string->len], bytes, size);
+    string->len += size;
+    string->ptr[string->len] = '\0';
+    assert(string->len < string->cap);
 }
 
 void VCString_AppendCString(VCString *string, const char *cString) {

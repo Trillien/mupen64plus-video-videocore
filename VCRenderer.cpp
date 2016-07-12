@@ -127,6 +127,16 @@ void VCRenderer_CreateProgram(GLuint *program, GLuint vertexShader, GLuint fragm
     GL(glAttachShader(*program, fragmentShader));
 }
 
+void VCRenderer_DestroyProgram(VCProgram *program) {
+    printf("destroying program %d\n", (int)program->program);
+    GL(glDeleteProgram(program->program));
+    GL(glDeleteShader(program->vertexShader));
+    GL(glDeleteShader(program->fragmentShader));
+    program->program = 0;
+    program->vertexShader = 0;
+    program->fragmentShader = 0;
+}
+
 static void VCRenderer_CompileAndLinkShaders(VCRenderer *renderer) {
     VCRenderer_CompileShader(&renderer->blitProgram.vertexShader,
                              GL_VERTEX_SHADER,
@@ -179,12 +189,24 @@ static void VCRenderer_SetVBOStateForN64Program(VCRenderer *renderer) {
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, shade)));
     GL(glVertexAttribPointer(5,
+                             4,
+                             GL_UNSIGNED_BYTE,
+                             GL_TRUE,
+                             sizeof(VCN64Vertex),
+                             (const GLvoid *)offsetof(VCN64Vertex, primitive)));
+    GL(glVertexAttribPointer(6,
+                             4,
+                             GL_UNSIGNED_BYTE,
+                             GL_TRUE,
+                             sizeof(VCN64Vertex),
+                             (const GLvoid *)offsetof(VCN64Vertex, environment)));
+    GL(glVertexAttribPointer(7,
                              1,
                              GL_UNSIGNED_SHORT,
                              GL_FALSE,
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, subprogram)));
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < 8; i++)
         GL(glEnableVertexAttribArray(i));
 }
 
@@ -296,7 +318,10 @@ static bool VCRenderer_CanAddToCurrentBatch(VCRenderer *renderer, VCBlendFlags *
         batch->blendFlags.viewport.size.height == blendFlags->viewport.size.height;
 }
 
-void VCRenderer_AddVertex(VCRenderer *renderer, VCN64Vertex *vertex, VCBlendFlags *blendFlags) {
+void VCRenderer_AddVertex(VCRenderer *renderer,
+                          VCN64Vertex *vertex,
+                          VCBlendFlags *blendFlags,
+                          uint8_t mode) {
     if (!VCRenderer_CanAddToCurrentBatch(renderer, blendFlags))
         VCRenderer_AddNewBatch(renderer, blendFlags);
 
@@ -312,7 +337,8 @@ void VCRenderer_AddVertex(VCRenderer *renderer, VCN64Vertex *vertex, VCBlendFlag
     VCShaderSubprogramContext subprogramContext =
         VCShaderCompiler_CreateSubprogramContext(VCColor_ColorFToColor(envColor),
                                                  VCColor_ColorFToColor(primColor),
-                                                 gDP.otherMode.cycleType == G_CYC_2CYCLE);
+                                                 gDP.otherMode.cycleType == G_CYC_2CYCLE,
+                                                 mode);
     VCShaderSubprogramSignature subprogramSignature =
         VCShaderCompiler_GetOrCreateSubprogramSignatureForCurrentCombiner(
                 renderer->shaderSubprogramLibrary,
@@ -367,10 +393,11 @@ static void VCRenderer_CompileShaderProgram(VCRenderer *renderer,
     VCString fragmentShaderSource = VCString_Create();
     VCString_AppendCString(&fragmentShaderSource, renderer->shaderPreamble);
     VCShaderCompiler_GenerateGLSLFragmentShaderForProgram(&fragmentShaderSource, shaderProgram);
-    printf("New program:\n%s\n// end\n", fragmentShaderSource.ptr);
+    // printf("New program:\n%s\n// end\n", fragmentShaderSource.ptr);
     VCRenderer_CompileShaderFromCString(&program->fragmentShader,
                                         GL_FRAGMENT_SHADER,
                                         fragmentShaderSource.ptr);
+    VCString_Destroy(&fragmentShaderSource);
 
     VCRenderer_CreateProgram(&program->program, program->vertexShader, program->fragmentShader);
     GL(glBindAttribLocation(program->program, 0, "aPosition"));
@@ -378,12 +405,22 @@ static void VCRenderer_CompileShaderProgram(VCRenderer *renderer,
     GL(glBindAttribLocation(program->program, 2, "aTexture0Bounds"));
     GL(glBindAttribLocation(program->program, 3, "aTexture1Bounds"));
     GL(glBindAttribLocation(program->program, 4, "aShade"));
-    GL(glBindAttribLocation(program->program, 5, "aSubprogram"));
+    GL(glBindAttribLocation(program->program, 5, "aPrimitive"));
+    GL(glBindAttribLocation(program->program, 6, "aEnvironment"));
+    GL(glBindAttribLocation(program->program, 7, "aSubprogram"));
     GL(glLinkProgram(program->program));
     GL(glUseProgram(program->program));
 
     GLint uTexture = glGetUniformLocation(program->program, "uTexture");
     GL(glUniform1i(uTexture, 0));
+
+    VCDebugger_IncrementSample(renderer->debugger, &renderer->debugger->stats.programsCreated);
+}
+
+static void VCRenderer_DestroyShaderProgram(VCRenderer *renderer, uint32_t shaderProgramID) {
+    assert(shaderProgramID < renderer->shaderProgramsLength);
+    assert(shaderProgramID < renderer->shaderProgramsCapacity);
+    VCRenderer_DestroyProgram(&renderer->shaderPrograms[shaderProgramID]);
 }
 
 static int VCRenderer_ThreadMain(void *userData) {
@@ -451,6 +488,9 @@ static int VCRenderer_ThreadMain(void *userData) {
                 VCRenderer_CompileShaderProgram(renderer,
                                                 command->shaderProgram,
                                                 command->shaderProgramID);
+                break;
+            case VC_RENDER_COMMAND_DESTROY_SHADER_PROGRAM:
+                VCRenderer_DestroyShaderProgram(renderer, command->shaderProgramID);
                 break;
             }
         }
@@ -695,6 +735,31 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
 
         VCColorf shadeColor = { spVertex->r, spVertex->g, spVertex->b, spVertex->a };
         n64Vertex->shade = VCColor_ColorFToColor(shadeColor);
+
+        VCColorf primColor = {
+            gDP.primColor.r,
+            gDP.primColor.g,
+            gDP.primColor.b,
+            gDP.primColor.a
+        };
+#if 0
+        if ((primColor.r != 0.0 && primColor.r != 1.0) ||
+                (primColor.g != 0.0 && primColor.g != 1.0) ||
+                (primColor.b != 0.0 && primColor.b != 1.0) ||
+                (primColor.a != 0.0 && primColor.a != 1.0))
+            fprintf(stderr, "primColor=%f,%f,%f,%f\n", primColor.r, primColor.g, primColor.b, primColor.a);
+#endif
+        n64Vertex->primitive = VCColor_ColorFToColor(primColor);
+
+        VCColorf envColor = { gDP.envColor.r, gDP.envColor.g, gDP.envColor.b, gDP.envColor.a };
+#if 0
+        if ((envColor.r != 0.0 && envColor.r != 1.0) ||
+                (envColor.g != 0.0 && envColor.g != 1.0) ||
+                (envColor.b != 0.0 && envColor.b != 1.0) ||
+                (envColor.a != 0.0 && envColor.a != 1.0))
+            fprintf(stderr, "envColor=%f,%f,%f,%f\n", envColor.r, envColor.g, envColor.b, envColor.a);
+#endif
+        n64Vertex->environment = VCColor_ColorFToColor(envColor);
 #if 0
         switch (mode) {
         case VC_TRIANGLE_MODE_NORMAL:
@@ -741,6 +806,16 @@ void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer) {
             VCShaderCompiler_GetOrCreateProgram(renderer->shaderSubprogramLibrary,
                                                 shaderProgramDescriptor);
         VCRenderer_EnqueueCommand(renderer, &command);
+
+        uint16_t shaderProgramIDToDelete = 0;
+        while (VCShaderCompiler_ExpireOldProgramIfNecessary(
+                    renderer->shaderProgramDescriptorLibrary,
+                    &shaderProgramIDToDelete)) {
+            VCRenderCommand expireCommand;
+            expireCommand.command = VC_RENDER_COMMAND_DESTROY_SHADER_PROGRAM;
+            expireCommand.shaderProgramID = shaderProgramIDToDelete;
+            VCRenderer_EnqueueCommand(renderer, &expireCommand);
+        }
     }
 }
 

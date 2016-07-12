@@ -8,10 +8,10 @@
 
 VCColor VCColor_ColorFToColor(VCColorf colorf) {
     VCColor color = {
-        (uint8_t)round(colorf.r * 255.0),
-        (uint8_t)round(colorf.g * 255.0),
-        (uint8_t)round(colorf.b * 255.0),
-        (uint8_t)round(colorf.a * 255.0),
+        (uint8_t)round(fmin(colorf.r, 1.0) * 255.0),
+        (uint8_t)round(fmin(colorf.g, 1.0) * 255.0),
+        (uint8_t)round(fmin(colorf.b, 1.0) * 255.0),
+        (uint8_t)round(fmin(colorf.a, 1.0) * 255.0),
     };
     return color;
 }

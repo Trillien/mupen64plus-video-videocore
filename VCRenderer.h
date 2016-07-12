@@ -12,6 +12,7 @@
 #define VC_RENDER_COMMAND_UPLOAD_TEXTURE            1
 #define VC_RENDER_COMMAND_DRAW_BATCHES              2
 #define VC_RENDER_COMMAND_COMPILE_SHADER_PROGRAM    3
+#define VC_RENDER_COMMAND_DESTROY_SHADER_PROGRAM    4
 
 #define VC_TRIANGLE_MODE_NORMAL             0
 #define VC_TRIANGLE_MODE_TEXTURE_RECTANGLE  1
@@ -43,6 +44,8 @@ struct VCN64Vertex {
     VCRects texture0Bounds;
     VCRects texture1Bounds;
     VCColor shade;
+    VCColor primitive;
+    VCColor environment;
     uint16_t subprogram;
 };
 
@@ -118,7 +121,10 @@ VCRenderer *VCRenderer_SharedRenderer();
 void VCRenderer_Start(VCRenderer *renderer);
 void VCRenderer_CreateProgram(GLuint *program, GLuint vertexShader, GLuint fragmentShader);
 void VCRenderer_CompileShader(GLuint *shader, GLint shaderType, const char *path);
-void VCRenderer_AddVertex(VCRenderer *renderer, VCN64Vertex *vertex, VCBlendFlags *blendFlags);
+void VCRenderer_AddVertex(VCRenderer *renderer,
+                          VCN64Vertex *vertex,
+                          VCBlendFlags *blendFlags,
+                          uint8_t mode);
 void VCRenderer_EnqueueCommand(VCRenderer *renderer, VCRenderCommand *command);
 void VCRenderer_SubmitCommands(VCRenderer *renderer);
 void VCRenderer_InitTriangleVertices(VCRenderer *renderer,

@@ -23,6 +23,7 @@ struct VCShaderSubprogramContext {
     VCColor primColor;
     VCColor envColor;
     bool secondCycleEnabled;
+    uint8_t triangleMode;
 };
 
 struct VCShaderSubprogramSignatureTable {
@@ -73,7 +74,8 @@ void VCShaderCompiler_GenerateGLSLFragmentShaderForProgram(VCString *shaderSourc
                                                            VCShaderProgram *program);
 VCShaderSubprogramContext VCShaderCompiler_CreateSubprogramContext(VCColor primColor,
                                                                    VCColor envColor,
-                                                                   bool secondCycleEnabled);
+                                                                   bool secondCycleEnabled,
+                                                                   uint8_t triangleMode);
 VCShaderSubprogramLibrary *VCShaderCompiler_CreateSubprogramLibrary();
 uint16_t VCShaderCompiler_GetOrCreateSubprogramID(VCShaderSubprogramSignatureTable *table,
                                                   VCShaderSubprogramSignature *descriptor);
@@ -90,6 +92,8 @@ VCShaderSubprogramSignature VCShaderCompiler_GetOrCreateSubprogramSignatureForCu
         VCShaderSubprogramLibrary *library,
         VCShaderSubprogramContext *context);
 void VCShaderCompiler_DestroySubprogramSignature(VCShaderSubprogramSignature *signature);
+bool VCShaderCompiler_ExpireOldProgramIfNecessary(VCShaderProgramDescriptorLibrary *library,
+                                                  uint16_t *shaderProgramIDToDelete);
 
 #endif
 

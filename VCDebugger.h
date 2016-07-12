@@ -22,6 +22,7 @@ struct VCDebugStats {
     VCDebugStat trianglesDrawn;
     VCDebugStat batches;
     VCDebugStat texturesUploaded;
+    VCDebugStat programsCreated;
     VCDebugStat prepareTime;
     VCDebugStat drawTime;
     VCDebugStat viRate;

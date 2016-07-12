@@ -7,6 +7,8 @@ varying vec2 vTextureUv;
 varying vec4 vTexture0Bounds;
 varying vec4 vTexture1Bounds;
 varying vec4 vShade;
+varying vec4 vPrimitive;
+varying vec4 vEnvironment;
 varying float vSubprogram;
 
 vec2 AtlasUv(vec4 textureBounds) {

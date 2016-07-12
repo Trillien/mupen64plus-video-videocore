@@ -718,12 +718,12 @@ void gDPFillRectangle( s32 ulx, s32 uly, s32 lrx, s32 lry )
         false,
         { { gSP.viewport.x, gSP.viewport.y }, { gSP.viewport.width, gSP.viewport.height } }
     };
-    VCRenderer_AddVertex(renderer, &n64Vertices[0], &blendFlags);
-    VCRenderer_AddVertex(renderer, &n64Vertices[1], &blendFlags);
-    VCRenderer_AddVertex(renderer, &n64Vertices[3], &blendFlags);
-    VCRenderer_AddVertex(renderer, &n64Vertices[1], &blendFlags);
-    VCRenderer_AddVertex(renderer, &n64Vertices[2], &blendFlags);
-    VCRenderer_AddVertex(renderer, &n64Vertices[3], &blendFlags);
+    VCRenderer_AddVertex(renderer, &n64Vertices[0], &blendFlags, VC_TRIANGLE_MODE_RECT_FILL);
+    VCRenderer_AddVertex(renderer, &n64Vertices[1], &blendFlags, VC_TRIANGLE_MODE_RECT_FILL);
+    VCRenderer_AddVertex(renderer, &n64Vertices[3], &blendFlags, VC_TRIANGLE_MODE_RECT_FILL);
+    VCRenderer_AddVertex(renderer, &n64Vertices[1], &blendFlags, VC_TRIANGLE_MODE_RECT_FILL);
+    VCRenderer_AddVertex(renderer, &n64Vertices[2], &blendFlags, VC_TRIANGLE_MODE_RECT_FILL);
+    VCRenderer_AddVertex(renderer, &n64Vertices[3], &blendFlags, VC_TRIANGLE_MODE_RECT_FILL);
 
 	if (depthBuffer.current) depthBuffer.current->cleared = FALSE;
 	gDP.colorImage.changed = TRUE;
@@ -809,12 +809,30 @@ void gDPTextureRectangle( f32 ulx, f32 uly, f32 lrx, f32 lry, s32 tile, f32 s, f
         false,
         { { gSP.viewport.x, gSP.viewport.y }, { gSP.viewport.width, gSP.viewport.height } }
     };
-    VCRenderer_AddVertex(renderer, &n64Vertices[0], &blendFlags);
-    VCRenderer_AddVertex(renderer, &n64Vertices[1], &blendFlags);
-    VCRenderer_AddVertex(renderer, &n64Vertices[3], &blendFlags);
-    VCRenderer_AddVertex(renderer, &n64Vertices[1], &blendFlags);
-    VCRenderer_AddVertex(renderer, &n64Vertices[2], &blendFlags);
-    VCRenderer_AddVertex(renderer, &n64Vertices[3], &blendFlags);
+    VCRenderer_AddVertex(renderer,
+                         &n64Vertices[0],
+                         &blendFlags,
+                         VC_TRIANGLE_MODE_TEXTURE_RECTANGLE);
+    VCRenderer_AddVertex(renderer,
+                         &n64Vertices[1],
+                         &blendFlags,
+                         VC_TRIANGLE_MODE_TEXTURE_RECTANGLE);
+    VCRenderer_AddVertex(renderer,
+                         &n64Vertices[3],
+                         &blendFlags,
+                         VC_TRIANGLE_MODE_TEXTURE_RECTANGLE);
+    VCRenderer_AddVertex(renderer,
+                         &n64Vertices[1],
+                         &blendFlags,
+                         VC_TRIANGLE_MODE_TEXTURE_RECTANGLE);
+    VCRenderer_AddVertex(renderer,
+                         &n64Vertices[2],
+                         &blendFlags,
+                         VC_TRIANGLE_MODE_TEXTURE_RECTANGLE);
+    VCRenderer_AddVertex(renderer,
+                         &n64Vertices[3],
+                         &blendFlags,
+                         VC_TRIANGLE_MODE_TEXTURE_RECTANGLE);
 
 	gSP.textureTile[0] = &gDP.tiles[gSP.texture.tile];
 	gSP.textureTile[1] = &gDP.tiles[gSP.texture.tile < 7 ? gSP.texture.tile + 1 : gSP.texture.tile];

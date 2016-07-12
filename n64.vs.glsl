@@ -5,12 +5,16 @@ attribute vec2 aTextureUv;
 attribute vec4 aTexture0Bounds;
 attribute vec4 aTexture1Bounds;
 attribute vec4 aShade;
+attribute vec4 aPrimitive;
+attribute vec4 aEnvironment;
 attribute float aSubprogram;
 
 varying vec2 vTextureUv;
 varying vec4 vTexture0Bounds;
 varying vec4 vTexture1Bounds;
 varying vec4 vShade;
+varying vec4 vPrimitive;
+varying vec4 vEnvironment;
 varying float vSubprogram;
 
 void main(void) {
@@ -21,6 +25,8 @@ void main(void) {
     vTexture0Bounds = aTexture0Bounds / 1024.0;
     vTexture1Bounds = aTexture1Bounds / 1024.0;
     vShade = aShade;
+    vPrimitive = aPrimitive;
+    vEnvironment = aEnvironment;
     vSubprogram = aSubprogram;
     gl_Position = aPosition;
 }

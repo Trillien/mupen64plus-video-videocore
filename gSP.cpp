@@ -811,9 +811,9 @@ void gSPTriangle( s32 v0, s32 v1, s32 v2, s32 flag )
                 { gSP.viewport.width, gSP.viewport.height }
             }
         };
-        VCRenderer_AddVertex(renderer, &n64Vertices[0], &blendFlags);
-        VCRenderer_AddVertex(renderer, &n64Vertices[1], &blendFlags);
-        VCRenderer_AddVertex(renderer, &n64Vertices[2], &blendFlags);
+        VCRenderer_AddVertex(renderer, &n64Vertices[0], &blendFlags, VC_TRIANGLE_MODE_NORMAL);
+        VCRenderer_AddVertex(renderer, &n64Vertices[1], &blendFlags, VC_TRIANGLE_MODE_NORMAL);
+        VCRenderer_AddVertex(renderer, &n64Vertices[2], &blendFlags, VC_TRIANGLE_MODE_NORMAL);
 	}
 #ifdef DEBUG
 	else

@@ -19,16 +19,26 @@
 #define VC_SHADER_MAX_INSTRUCTIONS          16
 #define VC_SHADER_MAX_CONSTANTS             16
 
-#define VC_SHADER_COMPILER_REGISTER_VALUE       0x00
-#define VC_SHADER_COMPILER_CONSTANT_VALUE       0x80
-#define VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE  0xfa
-#define VC_SHADER_COMPILER_TEXEL0_VALUE         0xfa
-#define VC_SHADER_COMPILER_TEXEL0_ALPHA_VALUE   0xfb
-#define VC_SHADER_COMPILER_TEXEL1_VALUE         0xfc
-#define VC_SHADER_COMPILER_TEXEL1_ALPHA_VALUE   0xfd
-#define VC_SHADER_COMPILER_SHADE_VALUE          0xfe
-#define VC_SHADER_COMPILER_OUTPUT_VALUE         0xff
-#define VC_SHADER_COMPILER_TYPE_MASK            0x80
+#define VC_SHADER_COMPILER_REGISTER_VALUE           0x00
+#define VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE      0xf3
+#define VC_SHADER_COMPILER_ZERO_VALUE               0xf3
+#define VC_SHADER_COMPILER_ONE_VALUE                0xf4
+#define VC_SHADER_COMPILER_PRIMITIVE_VALUE          0xf5
+#define VC_SHADER_COMPILER_PRIMITIVE_ALPHA_VALUE    0xf6
+#define VC_SHADER_COMPILER_ENVIRONMENT_VALUE        0xf7
+#define VC_SHADER_COMPILER_ENVIRONMENT_ALPHA_VALUE  0xf8
+#define VC_SHADER_COMPILER_TEXEL0_VALUE             0xf9
+#define VC_SHADER_COMPILER_TEXEL0_ALPHA_VALUE       0xfa
+#define VC_SHADER_COMPILER_TEXEL1_VALUE             0xfb
+#define VC_SHADER_COMPILER_TEXEL1_ALPHA_VALUE       0xfc
+#define VC_SHADER_COMPILER_SHADE_VALUE              0xfd
+#define VC_SHADER_COMPILER_SHADE_ALPHA_VALUE        0xfe
+#define VC_SHADER_COMPILER_OUTPUT_VALUE             0xff
+
+#define VC_SHADER_COMPILER_MODE_RGB     0
+#define VC_SHADER_COMPILER_MODE_ALPHA   1
+
+#define VC_SHADER_COMPILER_MAX_PROGRAMS         64
 
 // SSA form instruction.
 struct VCShaderInstruction {
@@ -40,8 +50,6 @@ struct VCShaderInstruction {
 struct VCShaderFunction {
     VCShaderInstruction *instructions;
     size_t instructionCount;
-    VCColor *constants;
-    size_t constantCount;
 };
 
 struct VCShaderSubprogram {
@@ -86,13 +94,6 @@ struct VCShaderSubprogramSignatureListEntry {
 struct VCShaderProgramDescriptorLibrary {
     VCShaderProgramDescriptor *shaderProgramDescriptors;
     size_t shaderProgramDescriptorCount;
-};
-
-struct VCShaderConstantMergePoolEntry {
-    VCColor constant;
-    uint8_t oldIndex;
-    uint8_t newIndex;
-    UT_hash_handle hh;
 };
 
 VCShaderProgramDescriptorLibrary *VCShaderCompiler_CreateShaderProgramDescriptorLibrary() {
@@ -147,6 +148,52 @@ static VCShaderProgramDescriptor *VCShaderCompiler_CreateShaderProgramDescriptor
     return programDescriptor;
 }
 
+#if 0
+static void VCShaderCompiler_DestroyShaderSubprogramSignature(
+        VCShaderSubprogramSignature *signature) {
+    VCString_Destroy(&signature->serializedData);
+    memset(&signature->source, '\0', sizeof(VCShaderSubprogramSource));
+}
+#endif
+
+// Does not destroy subprogram signatures, since they are weakly referenced by subprogram signature
+// lists.
+static void VCShaderCompiler_DestroyShaderSubprogramSignatureList(
+        VCShaderSubprogramSignatureList *list) {
+    free(list->entries);
+    list->entries = NULL;
+}
+
+#if 0
+static void VCShaderCompiler_DestroyShaderFunction(VCShaderFunction *function) {
+    free(function->instructions);
+    function->instructions = NULL;
+    function->instructionCount = 0;
+}
+
+static void VCShaderCompiler_DestroyShaderSubprogram(VCShaderSubprogram *subprogram) {
+    memset(&subprogram->source, '\0', sizeof(VCShaderSubprogramSource));
+    VCShaderCompiler_DestroyShaderFunction(&subprogram->rgb);
+    VCShaderCompiler_DestroyShaderFunction(&subprogram->a);
+}
+
+static void VCShaderCompiler_DestroyShaderProgram(VCShaderProgram *program) {
+    // Does not destroy subprograms since programs only hold weak references to them.
+    free(program->subprograms);
+    program->subprograms = NULL;
+}
+#endif
+
+static void VCShaderCompiler_DestroyShaderProgramDescriptor(
+        VCShaderProgramDescriptor *descriptor) {
+    // FIXME(tachi): This does not destroy programs, so they leak. We should really duplicate them
+    // over to the renderer thread.
+    VCShaderCompiler_DestroyShaderSubprogramSignatureList(&descriptor->subprogramSignatures);
+    VCShaderCompiler_DestroyShaderProgramSignature(&descriptor->programSignature);
+    descriptor->program = NULL;
+    descriptor->id = 0;
+}
+
 uint16_t VCShaderCompiler_GetOrCreateShaderProgramID(
         VCShaderProgramDescriptorLibrary *library,
         VCShaderSubprogramSignatureList *subprogramSignatures,
@@ -161,6 +208,13 @@ uint16_t VCShaderCompiler_GetOrCreateShaderProgramID(
               programDescriptor);
     *newlyCreated = programDescriptor == NULL;
     if (programDescriptor != NULL) {
+        // Reinsert the program into the hash to maintain the LRU property.
+        HASH_DEL(library->shaderProgramDescriptors, programDescriptor);
+        HASH_ADD_KEYPTR(hh,
+                        library->shaderProgramDescriptors,
+                        programDescriptor->programSignature.serializedData.ptr,
+                        programDescriptor->programSignature.serializedData.len,
+                        programDescriptor);
         VCShaderCompiler_DestroyShaderProgramSignature(&programSignature);
         return programDescriptor->id;
     }
@@ -178,30 +232,48 @@ uint16_t VCShaderCompiler_GetOrCreateShaderProgramID(
     return id;
 }
 
-static uint8_t VCShaderCompiler_GetConstant(VCShaderFunction *function, VCColor *color) {
-    size_t constantIndex = function->constantCount;
-    assert(constantIndex < VC_SHADER_MAX_CONSTANTS);
-    function->constants[constantIndex] = *color;
-    function->constantCount++;
-    return VC_SHADER_COMPILER_CONSTANT_VALUE | (uint8_t)constantIndex;
+bool VCShaderCompiler_ExpireOldProgramIfNecessary(VCShaderProgramDescriptorLibrary *library,
+                                                  uint16_t *shaderProgramIDToDelete) {
+    size_t programCount = HASH_COUNT(library->shaderProgramDescriptors);
+    if (programCount <= VC_SHADER_COMPILER_MAX_PROGRAMS)
+        return false;
+
+    assert(programCount > 0);
+    VCShaderProgramDescriptor *programDescriptorToDelete = library->shaderProgramDescriptors;
+    HASH_DEL(library->shaderProgramDescriptors, programDescriptorToDelete);
+    *shaderProgramIDToDelete = programDescriptorToDelete->id;
+    VCShaderCompiler_DestroyShaderProgramDescriptor(programDescriptorToDelete);
+    free(programDescriptorToDelete);
+    return true;
 }
 
-static uint8_t VCShaderCompiler_GetScalarConstant(VCShaderFunction *function, uint8_t k) {
-    VCColor color = { k, k, k, k };
-    return VCShaderCompiler_GetConstant(function, &color);
+static uint8_t VCShaderCompiler_SpecialRGBValueOrConstant(VCColor *color, uint8_t specialValue) {
+    if (color->r == 0 && color->g == 0 && color->b == 0)
+        return VC_SHADER_COMPILER_ZERO_VALUE;
+    if (color->r == 255 && color->g == 255 && color->b == 255)
+        return VC_SHADER_COMPILER_ONE_VALUE;
+    return specialValue;
 }
 
-static uint8_t VCShaderCompiler_GetValue(VCShaderSubprogramContext *context,
-                                         VCShaderFunction *function,
-                                         uint8_t source,
-                                         bool allowCombined) {
+static uint8_t VCShaderCompiler_SpecialAlphaValueOrConstant(VCColor *color, uint8_t specialValue) {
+    if (color->a == 0)
+        return VC_SHADER_COMPILER_ZERO_VALUE;
+    if (color->a == 255)
+        return VC_SHADER_COMPILER_ONE_VALUE;
+    return specialValue;
+}
+
+static uint8_t VCShaderCompiler_GetRGBValue(VCShaderSubprogramContext *context,
+                                            VCShaderFunction *function,
+                                            uint8_t source,
+                                            bool allowCombined) {
     switch (source) {
     case G_CCMUX_COMBINED:
     case G_CCMUX_COMBINED_ALPHA:
         // FIXME(tachi): Support G_CCMUX_COMBINED_ALPHA!
         if (allowCombined)
             return VC_SHADER_COMPILER_REGISTER_VALUE | 2;
-        return VCShaderCompiler_GetScalarConstant(function, 0);
+        return VC_SHADER_COMPILER_ZERO_VALUE;
     case G_CCMUX_TEXEL0:
         return VC_SHADER_COMPILER_TEXEL0_VALUE;
     case G_CCMUX_TEXEL0_ALPHA:
@@ -212,21 +284,75 @@ static uint8_t VCShaderCompiler_GetValue(VCShaderSubprogramContext *context,
         return VC_SHADER_COMPILER_TEXEL1_ALPHA_VALUE;
     case G_CCMUX_SHADE:
         return VC_SHADER_COMPILER_SHADE_VALUE;
+    case G_CCMUX_SHADE_ALPHA:
+        return VC_SHADER_COMPILER_SHADE_ALPHA_VALUE;
     case G_CCMUX_PRIMITIVE:
-        return VCShaderCompiler_GetConstant(function, &context->primColor);
+        return VCShaderCompiler_SpecialRGBValueOrConstant(&context->primColor,
+                                                          VC_SHADER_COMPILER_PRIMITIVE_VALUE);
     case G_CCMUX_ENVIRONMENT:
-        return VCShaderCompiler_GetConstant(function, &context->envColor);
+        return VCShaderCompiler_SpecialRGBValueOrConstant(&context->primColor,
+                                                          VC_SHADER_COMPILER_ENVIRONMENT_VALUE);
     case G_CCMUX_PRIMITIVE_ALPHA:
-        return VCShaderCompiler_GetScalarConstant(function, context->primColor.a);
+        return VCShaderCompiler_SpecialAlphaValueOrConstant(
+            &context->primColor,
+            VC_SHADER_COMPILER_PRIMITIVE_ALPHA_VALUE);
     case G_CCMUX_ENV_ALPHA:
-        return VCShaderCompiler_GetScalarConstant(function, context->envColor.a);
+        return VCShaderCompiler_SpecialAlphaValueOrConstant(
+            &context->envColor,
+            VC_SHADER_COMPILER_ENVIRONMENT_ALPHA_VALUE);
     case G_CCMUX_0:
-        return VCShaderCompiler_GetScalarConstant(function, 0);
+        return VC_SHADER_COMPILER_ZERO_VALUE;
     case G_CCMUX_1:
-        return VCShaderCompiler_GetScalarConstant(function, 255);
+        return VC_SHADER_COMPILER_ONE_VALUE;
     }
     // FIXME(tachi): Support K5!
-    return VCShaderCompiler_GetScalarConstant(function, 0);
+    return VC_SHADER_COMPILER_ZERO_VALUE;
+}
+
+static uint8_t VCShaderCompiler_GetAlphaValue(VCShaderSubprogramContext *context,
+                                              VCShaderFunction *function,
+                                              uint8_t source,
+                                              bool allowCombined) {
+    switch (source) {
+    case G_ACMUX_COMBINED:
+        if (allowCombined)
+            return VC_SHADER_COMPILER_REGISTER_VALUE | 2;
+        return VC_SHADER_COMPILER_ZERO_VALUE;
+    case G_ACMUX_TEXEL0:
+        return VC_SHADER_COMPILER_TEXEL0_VALUE;
+    case G_ACMUX_TEXEL1:
+        return VC_SHADER_COMPILER_TEXEL1_VALUE;
+    case G_ACMUX_SHADE:
+        return VC_SHADER_COMPILER_SHADE_VALUE;
+    case G_ACMUX_PRIMITIVE:
+        return VCShaderCompiler_SpecialRGBValueOrConstant(&context->primColor,
+                                                          VC_SHADER_COMPILER_PRIMITIVE_VALUE);
+    case G_ACMUX_ENVIRONMENT:
+        return VCShaderCompiler_SpecialRGBValueOrConstant(&context->primColor,
+                                                          VC_SHADER_COMPILER_ENVIRONMENT_VALUE);
+    case G_ACMUX_0:
+        return VC_SHADER_COMPILER_ZERO_VALUE;
+    case G_ACMUX_1:
+        return VC_SHADER_COMPILER_ONE_VALUE;
+    }
+    // FIXME(tachi): Support K5!
+    return VC_SHADER_COMPILER_ZERO_VALUE;
+}
+
+static uint8_t VCShaderCompiler_GetValue(VCShaderSubprogramContext *context,
+                                         uint8_t mode,
+                                         VCShaderFunction *function,
+                                         uint8_t source,
+                                         bool allowCombined) {
+    switch (mode) {
+    case VC_SHADER_COMPILER_MODE_RGB:
+        return VCShaderCompiler_GetRGBValue(context, function, source, allowCombined);
+    case VC_SHADER_COMPILER_MODE_ALPHA:
+        return VCShaderCompiler_GetAlphaValue(context, function, source, allowCombined);
+    default:
+        assert(0 && "Unknown shader compiler mode!");
+        return 0;
+    }
 }
 
 static VCShaderInstruction *VCShaderCompiler_AllocateInstruction(VCShaderFunction *function) {
@@ -237,6 +363,7 @@ static VCShaderInstruction *VCShaderCompiler_AllocateInstruction(VCShaderFunctio
 }
 
 static uint8_t VCShaderCompiler_GenerateInstructionsForCycle(VCShaderSubprogramContext *context,
+                                                             uint8_t mode,
                                                              VCShaderFunction *function,
                                                              VCUnpackedCombinerFunction *cycle,
                                                              uint8_t firstRegister,
@@ -245,10 +372,12 @@ static uint8_t VCShaderCompiler_GenerateInstructionsForCycle(VCShaderSubprogramC
     instruction->operation = VC_SHADER_INSTRUCTION_SUB;
     instruction->destination = firstRegister;
     instruction->operands[0] = VCShaderCompiler_GetValue(context,
+                                                         mode,
                                                          function,
                                                          cycle->sa,
                                                          allowCombined);
     instruction->operands[1] = VCShaderCompiler_GetValue(context,
+                                                         mode,
                                                          function,
                                                          cycle->sb,
                                                          allowCombined);
@@ -258,6 +387,7 @@ static uint8_t VCShaderCompiler_GenerateInstructionsForCycle(VCShaderSubprogramC
     instruction->destination = firstRegister + 1;
     instruction->operands[0] = firstRegister;
     instruction->operands[1] = VCShaderCompiler_GetValue(context,
+                                                         mode,
                                                          function,
                                                          cycle->m,
                                                          allowCombined);
@@ -267,22 +397,12 @@ static uint8_t VCShaderCompiler_GenerateInstructionsForCycle(VCShaderSubprogramC
     instruction->destination = firstRegister + 2;
     instruction->operands[0] = firstRegister + 1;
     instruction->operands[1] = VCShaderCompiler_GetValue(context,
+                                                         mode,
                                                          function,
                                                          cycle->a,
                                                          allowCombined);
 
     return firstRegister + 2;
-}
-
-static bool VCShaderCompiler_OperandIsEqualToScalarConstant(VCShaderFunction *function,
-                                                            uint8_t operand,
-                                                            uint8_t scalar) {
-    if ((operand & VC_SHADER_COMPILER_CONSTANT_VALUE) == 0)
-        return false;
-    if (operand >= VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE)
-        return false;
-    VCColor color = function->constants[operand & ~VC_SHADER_COMPILER_CONSTANT_VALUE];
-    return color.r == scalar && color.g == scalar && color.b == scalar && color.a == scalar;
 }
 
 static bool VCShaderCompiler_CombineInstructions(VCShaderFunction *function) {
@@ -293,50 +413,44 @@ static bool VCShaderCompiler_CombineInstructions(VCShaderFunction *function) {
         VCShaderInstruction *instruction = &function->instructions[instructionIndex];
         switch (instruction->operation) {
         case VC_SHADER_INSTRUCTION_ADD:
-            if (VCShaderCompiler_OperandIsEqualToScalarConstant(function,
-                                                                instruction->operands[0],
-                                                                0)) {
+            if (instruction->operands[0] == VC_SHADER_COMPILER_ZERO_VALUE) {
                 instruction->operation = VC_SHADER_INSTRUCTION_MOVE;
                 instruction->operands[0] = instruction->operands[1];
+                instruction->operands[1] = VC_SHADER_COMPILER_ZERO_VALUE;
                 changed = true;
-            } else if (VCShaderCompiler_OperandIsEqualToScalarConstant(function,
-                                                                       instruction->operands[1],
-                                                                       0)) {
+            } else if (instruction->operands[1] == VC_SHADER_COMPILER_ZERO_VALUE) {
                 instruction->operation = VC_SHADER_INSTRUCTION_MOVE;
+                instruction->operands[1] = VC_SHADER_COMPILER_ZERO_VALUE;
                 changed = true;
             }
             break;
         case VC_SHADER_INSTRUCTION_SUB:
-            if (VCShaderCompiler_OperandIsEqualToScalarConstant(function,
-                                                                instruction->operands[1],
-                                                                0)) {
+            if (instruction->operands[1] == VC_SHADER_COMPILER_ZERO_VALUE) {
                 instruction->operation = VC_SHADER_INSTRUCTION_MOVE;
+                instruction->operands[1] = VC_SHADER_COMPILER_ZERO_VALUE;
+                changed = true;
             } else if (instruction->operands[0] == instruction->operands[1]) {
                 instruction->operation = VC_SHADER_INSTRUCTION_MOVE;
-                instruction->operands[0] = VCShaderCompiler_GetScalarConstant(function, 0);
+                instruction->operands[0] = VC_SHADER_COMPILER_ZERO_VALUE;
+                instruction->operands[1] = VC_SHADER_COMPILER_ZERO_VALUE;
                 changed = true;
             }
             break;
         case VC_SHADER_INSTRUCTION_MUL:
-            if (VCShaderCompiler_OperandIsEqualToScalarConstant(function,
-                                                                instruction->operands[0],
-                                                                255)) {
+            if (instruction->operands[0] == VC_SHADER_COMPILER_ONE_VALUE) {
                 instruction->operation = VC_SHADER_INSTRUCTION_MOVE;
                 instruction->operands[0] = instruction->operands[1];
+                instruction->operands[1] = VC_SHADER_COMPILER_ZERO_VALUE;
                 changed = true;
-            } else if (VCShaderCompiler_OperandIsEqualToScalarConstant(function,
-                                                                       instruction->operands[1],
-                                                                       255)) {
+            } else if (instruction->operands[1] == VC_SHADER_COMPILER_ONE_VALUE) {
                 instruction->operation = VC_SHADER_INSTRUCTION_MOVE;
+                instruction->operands[1] = VC_SHADER_COMPILER_ZERO_VALUE;
                 changed = true;
-            } else if (VCShaderCompiler_OperandIsEqualToScalarConstant(function,
-                                                                       instruction->operands[0],
-                                                                       0) ||
-                       VCShaderCompiler_OperandIsEqualToScalarConstant(function,
-                                                                       instruction->operands[1],
-                                                                       0)) {
+            } else if (instruction->operands[0] == VC_SHADER_COMPILER_ZERO_VALUE ||
+                       instruction->operands[1] == VC_SHADER_COMPILER_ZERO_VALUE) {
                 instruction->operation = VC_SHADER_INSTRUCTION_MOVE;
-                instruction->operands[0] = VCShaderCompiler_GetScalarConstant(function, 0);
+                instruction->operands[0] = VC_SHADER_COMPILER_ZERO_VALUE;
+                instruction->operands[1] = VC_SHADER_COMPILER_ZERO_VALUE;
                 changed = true;
             }
             break;
@@ -354,9 +468,10 @@ static bool VCShaderCompiler_PropagateConstants(VCShaderFunction *function) {
         VCShaderInstruction *instruction = &function->instructions[instructionIndex];
         if (instruction->operation != VC_SHADER_INSTRUCTION_MOVE)
             continue;
-        if ((instruction->operands[0] & VC_SHADER_COMPILER_CONSTANT_VALUE) == 0)
+        if (instruction->operands[0] < VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE)
             continue;
         assert(instruction->destination != instruction->operands[0]);
+        assert(instruction->operands[1] == VC_SHADER_COMPILER_ZERO_VALUE);
         for (size_t destinationInstructionIndex = instructionIndex + 1;
              destinationInstructionIndex < function->instructionCount;
              destinationInstructionIndex++) {
@@ -383,10 +498,10 @@ static bool VCShaderCompiler_PropagateValues(VCShaderFunction *function) {
         VCShaderInstruction *instruction = &function->instructions[instructionIndex];
         if (instruction->operation != VC_SHADER_INSTRUCTION_MOVE)
             continue;
-        if ((instruction->operands[0] & VC_SHADER_COMPILER_CONSTANT_VALUE) != 0) {
+        if (instruction->operands[0] >= VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE)
             continue;
-        }
         assert(instruction->destination != instruction->operands[0]);
+        assert(instruction->operands[1] == VC_SHADER_COMPILER_ZERO_VALUE);
         size_t sourceInstructionIndex = instructionIndex;
         while (true) {
             assert(sourceInstructionIndex != 0);
@@ -411,9 +526,8 @@ static size_t VCShaderCompiler_CountRegistersUsedInFunction(VCShaderFunction *fu
          instructionIndex < function->instructionCount;
          instructionIndex++) {
         VCShaderInstruction *instruction = &function->instructions[instructionIndex];
-        if ((instruction->destination & VC_SHADER_COMPILER_TYPE_MASK) ==
-                VC_SHADER_COMPILER_REGISTER_VALUE) {
-            uint8_t registerNumber = (instruction->destination & ~VC_SHADER_COMPILER_TYPE_MASK);
+        if (instruction->destination < VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE) {
+            uint8_t registerNumber = instruction->destination;
             if (maxRegisterNumber < (uint8_t)(registerNumber + 1)) {
                 maxRegisterNumber = (uint8_t)(registerNumber + 1);
             }
@@ -432,9 +546,9 @@ static bool VCShaderCompiler_EliminateDeadCode(VCShaderFunction *function) {
          instructionIndex < function->instructionCount;
          instructionIndex++) {
         VCShaderInstruction *instruction = &function->instructions[instructionIndex];
-        if ((instruction->operands[0] & VC_SHADER_COMPILER_CONSTANT_VALUE) == 0)
+        if (instruction->operands[0] < VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE)
             usedRegisters[instruction->operands[0]] = true;
-        if ((instruction->operands[1] & VC_SHADER_COMPILER_CONSTANT_VALUE) == 0)
+        if (instruction->operands[1] < VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE)
             usedRegisters[instruction->operands[1]] = true;
     }
 
@@ -443,7 +557,7 @@ static bool VCShaderCompiler_EliminateDeadCode(VCShaderFunction *function) {
          instructionIndex < function->instructionCount;
          instructionIndex++) {
         VCShaderInstruction *instruction = &function->instructions[instructionIndex];
-        if ((instruction->destination & VC_SHADER_COMPILER_CONSTANT_VALUE) == 0 &&
+        if (instruction->destination < VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE &&
                 !usedRegisters[instruction->destination]) {
             // Zap this instruction.
             continue;
@@ -461,74 +575,6 @@ static bool VCShaderCompiler_EliminateDeadCode(VCShaderFunction *function) {
     return changed;
 }
 
-static void VCShaderCompiler_MergeConstants(VCShaderFunction *function) {
-    VCShaderConstantMergePoolEntry *pool = NULL;
-    size_t newConstantCount = 0;
-    uint8_t *constantIndexMapping = (uint8_t *)malloc(sizeof(uint8_t) * function->constantCount);
-    memset(constantIndexMapping, 0xff, sizeof(uint8_t) * function->constantCount);
-
-    for (size_t instructionIndex = 0;
-         instructionIndex < function->instructionCount;
-         instructionIndex++) {
-        VCShaderInstruction *instruction = &function->instructions[instructionIndex];
-        for (uint8_t operandIndex = 0; operandIndex < 2; operandIndex++) {
-            uint8_t operand = instruction->operands[operandIndex];
-            if ((operand & VC_SHADER_COMPILER_CONSTANT_VALUE) == 0)
-                continue;
-            if (operand >= VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE)
-                continue;
-            uint8_t constantIndex = (operand & ~VC_SHADER_COMPILER_CONSTANT_VALUE);
-            VCColor constant = function->constants[constantIndex];
-            VCShaderConstantMergePoolEntry *entry = NULL;
-            HASH_FIND(hh, pool, &constant, sizeof(VCColor), entry);
-            if (entry != NULL) {
-                constantIndexMapping[constantIndex] = entry->newIndex;
-                continue;
-            }
-
-            entry = (VCShaderConstantMergePoolEntry *)
-                malloc(sizeof(VCShaderConstantMergePoolEntry));
-            entry->constant = constant;
-            entry->oldIndex = constantIndex;
-            entry->newIndex = newConstantCount;
-            memset(&entry->hh, '\0', sizeof(entry->hh));
-            HASH_ADD(hh, pool, constant, sizeof(VCColor), entry);
-            constantIndexMapping[constantIndex] = entry->newIndex;
-            newConstantCount++;
-        }
-    }
-
-    assert(newConstantCount <= function->constantCount);
-    if (newConstantCount == function->constantCount)
-        return;
-
-    VCShaderConstantMergePoolEntry *entry = NULL, *tempEntry = NULL;
-    HASH_ITER(hh, pool, entry, tempEntry) {
-        free(entry);
-    }
-
-    for (size_t instructionIndex = 0;
-         instructionIndex < function->instructionCount;
-         instructionIndex++) {
-        VCShaderInstruction *instruction = &function->instructions[instructionIndex];
-        for (uint8_t operandIndex = 0; operandIndex < 2; operandIndex++) {
-            uint8_t operand = instruction->operands[operandIndex];
-            if ((operand & VC_SHADER_COMPILER_CONSTANT_VALUE) == 0)
-                continue;
-            if (operand >= VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE)
-                continue;
-            uint8_t oldConstantIndex = (operand & ~VC_SHADER_COMPILER_CONSTANT_VALUE);
-            uint8_t newConstantIndex = constantIndexMapping[oldConstantIndex];
-            assert(newConstantIndex != 0xff);
-            instruction->operands[operandIndex] =
-                (newConstantIndex | VC_SHADER_COMPILER_CONSTANT_VALUE);
-        }
-    }
-
-    free(constantIndexMapping);
-    function->constantCount = newConstantCount;
-}
-
 static void VCShaderCompiler_RenumberRegisters(VCShaderFunction *function) {
     size_t registerCount = VCShaderCompiler_CountRegistersUsedInFunction(function);
     uint8_t *newRegisterMapping = (uint8_t *)malloc(sizeof(uint8_t) * registerCount);
@@ -541,13 +587,13 @@ static void VCShaderCompiler_RenumberRegisters(VCShaderFunction *function) {
         VCShaderInstruction *instruction = &function->instructions[instructionIndex];
         for (uint8_t operandIndex = 0; operandIndex < 2; operandIndex++) {
             uint8_t operand = instruction->operands[operandIndex];
-            if ((operand & VC_SHADER_COMPILER_CONSTANT_VALUE) != 0)
+            if (operand >= VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE)
                 continue;
             uint8_t newOperand = newRegisterMapping[operand];
             assert(newOperand != 0xff);
             instruction->operands[operandIndex] = newOperand;
         }
-        if ((instruction->destination & VC_SHADER_COMPILER_CONSTANT_VALUE) != 0)
+        if (instruction->destination >= VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE)
             continue;
         newRegisterMapping[instruction->destination] = newRegisterCount;
         instruction->destination = newRegisterCount;
@@ -568,26 +614,26 @@ static void VCShaderCompiler_OptimizeFunction(VCShaderFunction *function) {
     }
 
     VCShaderCompiler_RenumberRegisters(function);
-    VCShaderCompiler_MergeConstants(function);
 }
 
 static VCShaderFunction VCShaderCompiler_GenerateFunction(VCShaderSubprogramContext *context,
+                                                          uint8_t mode,
                                                           VCUnpackedCombinerFunction *cycle0,
                                                           VCUnpackedCombinerFunction *cycle1) {
     VCShaderFunction function;
     function.instructions = (VCShaderInstruction *)malloc(sizeof(VCShaderInstruction) *
                                                            VC_SHADER_MAX_INSTRUCTIONS);
     function.instructionCount = 0;
-    function.constants = (VCColor *)malloc(sizeof(VCColor) * VC_SHADER_MAX_CONSTANTS);
-    function.constantCount = 0;
 
     uint8_t output = VCShaderCompiler_GenerateInstructionsForCycle(context,
+                                                                   mode,
                                                                    &function,
                                                                    cycle0,
                                                                    0,
                                                                    false);
     if (cycle1 != NULL) {
         output = VCShaderCompiler_GenerateInstructionsForCycle(context,
+                                                               mode,
                                                                &function,
                                                                cycle1,
                                                                output + 1,
@@ -598,15 +644,14 @@ static VCShaderFunction VCShaderCompiler_GenerateFunction(VCShaderSubprogramCont
     outputInstruction->operation = VC_SHADER_INSTRUCTION_MOVE;
     outputInstruction->destination = VC_SHADER_COMPILER_OUTPUT_VALUE;
     outputInstruction->operands[0] = output;
-    outputInstruction->operands[1] = VCShaderCompiler_GetScalarConstant(&function, 0);
+    outputInstruction->operands[1] = VC_SHADER_COMPILER_ZERO_VALUE;
 
     return function;
 }
 
-static VCShaderSubprogram *VCShaderCompiler_CreateSubprogram(VCShaderSubprogramSource *source) {
-    VCShaderSubprogram *subprogram = (VCShaderSubprogram *)malloc(sizeof(VCShaderSubprogram));
-    subprogram->source = *source;
-
+static void VCShaderCompiler_CreateSubprogramForNormalTriangleMode(
+        VCShaderSubprogramSource *source,
+        VCShaderSubprogram *subprogram) {
     VCUnpackedCombinerFunction cycle0Function;
     cycle0Function.sa = source->cycle0.saRGB;
     cycle0Function.sb = source->cycle0.sbRGB;
@@ -614,6 +659,7 @@ static VCShaderSubprogram *VCShaderCompiler_CreateSubprogram(VCShaderSubprogramS
     cycle0Function.a = source->cycle0.aRGB;
     if (!source->context.secondCycleEnabled) {
         subprogram->rgb = VCShaderCompiler_GenerateFunction(&source->context,
+                                                            VC_SHADER_COMPILER_MODE_RGB,
                                                             &cycle0Function,
                                                             NULL);
     } else {
@@ -623,6 +669,7 @@ static VCShaderSubprogram *VCShaderCompiler_CreateSubprogram(VCShaderSubprogramS
         cycle1Function.m = source->cycle1.mRGB;
         cycle1Function.a = source->cycle1.aRGB;
         subprogram->rgb = VCShaderCompiler_GenerateFunction(&source->context,
+                                                            VC_SHADER_COMPILER_MODE_RGB,
                                                             &cycle0Function,
                                                             &cycle1Function);
     }
@@ -633,6 +680,7 @@ static VCShaderSubprogram *VCShaderCompiler_CreateSubprogram(VCShaderSubprogramS
     cycle0Function.a = source->cycle0.aA;
     if (!source->context.secondCycleEnabled) {
         subprogram->a = VCShaderCompiler_GenerateFunction(&source->context,
+                                                          VC_SHADER_COMPILER_MODE_ALPHA,
                                                           &cycle0Function,
                                                           NULL);
     } else {
@@ -642,8 +690,74 @@ static VCShaderSubprogram *VCShaderCompiler_CreateSubprogram(VCShaderSubprogramS
         cycle1Function.m = source->cycle1.mA;
         cycle1Function.a = source->cycle1.aA;
         subprogram->a = VCShaderCompiler_GenerateFunction(&source->context,
+                                                          VC_SHADER_COMPILER_MODE_ALPHA,
                                                           &cycle0Function,
                                                           &cycle1Function);
+    }
+}
+
+static void VCShaderCompiler_CreateSubprogramForTextureRectangleTriangleMode(
+        VCShaderSubprogramSource *source,
+        VCShaderSubprogram *subprogram) {
+    VCUnpackedCombinerFunction cycle0Function;
+    cycle0Function.sa = G_CCMUX_TEXEL0;
+    cycle0Function.sb = G_CCMUX_0;
+    cycle0Function.m = G_CCMUX_1;
+    cycle0Function.a = G_CCMUX_0;
+    subprogram->rgb = VCShaderCompiler_GenerateFunction(&source->context,
+                                                        VC_SHADER_COMPILER_MODE_RGB,
+                                                        &cycle0Function,
+                                                        NULL);
+
+    cycle0Function.sa = G_ACMUX_TEXEL0;
+    cycle0Function.sb = G_ACMUX_0;
+    cycle0Function.m = G_ACMUX_1;
+    cycle0Function.a = G_ACMUX_0;
+    subprogram->a = VCShaderCompiler_GenerateFunction(&source->context,
+                                                      VC_SHADER_COMPILER_MODE_ALPHA,
+                                                      &cycle0Function,
+                                                      NULL);
+}
+
+static void VCShaderCompiler_CreateSubprogramForRectFillTriangleMode(
+        VCShaderSubprogramSource *source,
+        VCShaderSubprogram *subprogram) {
+    VCUnpackedCombinerFunction cycle0Function;
+    cycle0Function.sa = G_CCMUX_SHADE;
+    cycle0Function.sb = G_CCMUX_0;
+    cycle0Function.m = G_CCMUX_1;
+    cycle0Function.a = G_CCMUX_0;
+    subprogram->rgb = VCShaderCompiler_GenerateFunction(&source->context,
+                                                        VC_SHADER_COMPILER_MODE_RGB,
+                                                        &cycle0Function,
+                                                        NULL);
+
+    cycle0Function.sa = G_ACMUX_SHADE;
+    cycle0Function.sb = G_ACMUX_0;
+    cycle0Function.m = G_ACMUX_1;
+    cycle0Function.a = G_ACMUX_0;
+    subprogram->a = VCShaderCompiler_GenerateFunction(&source->context,
+                                                      VC_SHADER_COMPILER_MODE_ALPHA,
+                                                      &cycle0Function,
+                                                      NULL);
+}
+
+static VCShaderSubprogram *VCShaderCompiler_CreateSubprogram(VCShaderSubprogramSource *source) {
+    VCShaderSubprogram *subprogram = (VCShaderSubprogram *)malloc(sizeof(VCShaderSubprogram));
+    subprogram->source = *source;
+
+    switch (source->context.triangleMode) {
+    case VC_TRIANGLE_MODE_NORMAL:
+        VCShaderCompiler_CreateSubprogramForNormalTriangleMode(source, subprogram);
+        break;
+    case VC_TRIANGLE_MODE_TEXTURE_RECTANGLE:
+        VCShaderCompiler_CreateSubprogramForTextureRectangleTriangleMode(source, subprogram);
+        break;
+    case VC_TRIANGLE_MODE_RECT_FILL:
+        VCShaderCompiler_CreateSubprogramForRectFillTriangleMode(source, subprogram);
+        break;
+    default:
+        assert(0 && "Unknown triangle mode when creating subprogram!");
     }
 
     VCShaderCompiler_OptimizeFunction(&subprogram->rgb);
@@ -658,6 +772,24 @@ static void VCShaderCompiler_GenerateGLSLForValue(VCString *shaderSource,
                                                   uint8_t value) {
     const char *staticString = NULL;
     switch (value) {
+    case VC_SHADER_COMPILER_ZERO_VALUE:
+        staticString = "vec4(0.0)";
+        break;
+    case VC_SHADER_COMPILER_ONE_VALUE:
+        staticString = "vec4(1.0)";
+        break;
+    case VC_SHADER_COMPILER_PRIMITIVE_VALUE:
+        staticString = "vPrimitive";
+        break;
+    case VC_SHADER_COMPILER_PRIMITIVE_ALPHA_VALUE:
+        staticString = "vPrimitive.aaaa";
+        break;
+    case VC_SHADER_COMPILER_ENVIRONMENT_VALUE:
+        staticString = "vEnvironment";
+        break;
+    case VC_SHADER_COMPILER_ENVIRONMENT_ALPHA_VALUE:
+        staticString = "vEnvironment.aaaa";
+        break;
     case VC_SHADER_COMPILER_TEXEL0_VALUE:
         staticString = "texture0Color";
         break;
@@ -673,6 +805,9 @@ static void VCShaderCompiler_GenerateGLSLForValue(VCString *shaderSource,
     case VC_SHADER_COMPILER_SHADE_VALUE:
         staticString = "vShade";
         break;
+    case VC_SHADER_COMPILER_SHADE_ALPHA_VALUE:
+        staticString = "vShade.aaaa";
+        break;
     case VC_SHADER_COMPILER_OUTPUT_VALUE:
         staticString = outputLocation;
         break;
@@ -683,19 +818,7 @@ static void VCShaderCompiler_GenerateGLSLForValue(VCString *shaderSource,
         return;
     }
 
-    if ((value & VC_SHADER_COMPILER_CONSTANT_VALUE) != 0) {
-        uint8_t constantIndex = (value & ~VC_SHADER_COMPILER_CONSTANT_VALUE);
-        assert(constantIndex < function->constantCount);
-        VCColor *constant = &function->constants[constantIndex];
-        VCString_AppendFormat(shaderSource,
-                              "vec4(%f, %f, %f, %f)", 
-                              (float)constant->r / 255.0,
-                              (float)constant->g / 255.0,
-                              (float)constant->b / 255.0,
-                              (float)constant->a / 255.0);
-        return;
-    }
-
+    assert(value < VC_SHADER_COMPILER_LEAST_SPECIAL_VALUE);
     VCString_AppendFormat(shaderSource, "r%d", (int)value);
 }
 
@@ -712,6 +835,8 @@ static void VCShaderCompiler_GenerateGLSLForFunction(VCString *shaderSource,
                                               outputLocation,
                                               instruction->destination);
         VCString_AppendCString(shaderSource, " = ");
+        if (instruction->operation != VC_SHADER_INSTRUCTION_MOVE)
+            VCString_AppendCString(shaderSource, "clamp(");
         VCShaderCompiler_GenerateGLSLForValue(shaderSource,
                                               function,
                                               outputLocation,
@@ -737,6 +862,7 @@ static void VCShaderCompiler_GenerateGLSLForFunction(VCString *shaderSource,
                                                   function,
                                                   outputLocation,
                                                   instruction->operands[1]);
+            VCString_AppendCString(shaderSource, ", 0.0, 1.0)");
         }
         VCString_AppendCString(shaderSource, ";\n");
     }
@@ -810,9 +936,6 @@ static void VCShaderCompiler_AppendFunctionToSignature(VCString *signatureData,
     VCString_AppendBytes(signatureData,
                          function->instructions,
                          function->instructionCount * sizeof(VCShaderInstruction));
-    VCString_AppendBytes(signatureData,
-                         function->constants,
-                         function->constantCount * sizeof(VCColor));
 }
 
 static VCShaderSubprogramSignature *VCShaderCompiler_CreateSignatureForSubprogram(
@@ -823,9 +946,6 @@ static VCShaderSubprogramSignature *VCShaderCompiler_CreateSignatureForSubprogra
     memset(&signature->hh, '\0', sizeof(signature->hh));
 
     signature->serializedData = VCString_Create();
-    VCString_AppendBytes(&signature->serializedData,
-                         &subprogram->source,
-                         sizeof(subprogram->source));
     VCShaderCompiler_AppendFunctionToSignature(&signature->serializedData, &subprogram->rgb);
     VCShaderCompiler_AppendFunctionToSignature(&signature->serializedData, &subprogram->a);
     return signature;
@@ -833,11 +953,13 @@ static VCShaderSubprogramSignature *VCShaderCompiler_CreateSignatureForSubprogra
 
 VCShaderSubprogramContext VCShaderCompiler_CreateSubprogramContext(VCColor primColor,
                                                                    VCColor envColor,
-                                                                   bool secondCycleEnabled) {
+                                                                   bool secondCycleEnabled,
+                                                                   uint8_t triangleMode) {
     VCShaderSubprogramContext subprogramContext;
     subprogramContext.primColor = primColor;
     subprogramContext.envColor = envColor;
-    subprogramContext.secondCycleEnabled = true;
+    subprogramContext.secondCycleEnabled = secondCycleEnabled;
+    subprogramContext.triangleMode = triangleMode;
     return subprogramContext;
 }
 
@@ -849,7 +971,11 @@ static size_t VCShaderCompiler_GetSubprogramSignatureCount(
 uint16_t VCShaderCompiler_GetOrCreateSubprogramID(VCShaderSubprogramSignatureTable *table,
                                                   VCShaderSubprogramSignature *signature) {
     VCShaderSubprogramSignatureTableEntry *entry = NULL;
-    HASH_FIND(hh, table->entries, signature, sizeof(VCShaderSubprogramSignature), entry);
+    HASH_FIND(hh,
+              table->entries,
+              signature->serializedData.ptr,
+              signature->serializedData.len,
+              entry);
     if (entry != NULL)
         return entry->id;
 
@@ -860,7 +986,11 @@ uint16_t VCShaderCompiler_GetOrCreateSubprogramID(VCShaderSubprogramSignatureTab
     assert(id <= UINT16_MAX);
     entry->id = (uint16_t)id;
     memset(&entry->hh, '\0', sizeof(entry->hh));
-    HASH_ADD(hh, table->entries, signature, sizeof(VCShaderSubprogramSignature), entry);
+    HASH_ADD_KEYPTR(hh,
+                    table->entries,
+                    signature->serializedData.ptr,
+                    signature->serializedData.len,
+                    entry);
     return entry->id;
 }
 

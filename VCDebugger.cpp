@@ -20,7 +20,7 @@
 #define CELL_WIDTH                  12
 #define GLYPHS_PER_FONT             100
 
-#define DEBUG_COUNTERS              6
+#define DEBUG_COUNTERS              7
 #define TAB_STOP                    24
 #define WINDOW_WIDTH                82
 
@@ -223,6 +223,7 @@ void VCDebugger_Init(VCDebugger *debugger, VCRenderer *renderer) {
     VCDebugger_InitStat(&debugger->stats.trianglesDrawn);
     VCDebugger_InitStat(&debugger->stats.batches);
     VCDebugger_InitStat(&debugger->stats.texturesUploaded);
+    VCDebugger_InitStat(&debugger->stats.programsCreated);
     VCDebugger_InitStat(&debugger->stats.prepareTime);
     VCDebugger_InitStat(&debugger->stats.drawTime);
     VCDebugger_InitStat(&debugger->stats.viRate);
@@ -446,6 +447,13 @@ void VCDebugger_DrawDebugOverlay(VCDebugger *debugger) {
                              15,
                              &position);
     VCDebugger_DrawDebugStat(debugger,
+                             "new shaders",
+                             VCDebugger_MovingAverageOfStat(debugger,
+                                                            &debugger->stats.programsCreated),
+                             3,
+                             5,
+                             &position);
+    VCDebugger_DrawDebugStat(debugger,
                              "batches",
                              VCDebugger_MovingAverageOfStat(debugger,
                                                             &debugger->stats.batches),
@@ -473,6 +481,7 @@ void VCDebugger_NewFrame(VCDebugger *debugger) {
         VCDebugger_AdvanceSampleWindow(debugger, &debugger->stats.trianglesDrawn);
         VCDebugger_AdvanceSampleWindow(debugger, &debugger->stats.batches);
         VCDebugger_AdvanceSampleWindow(debugger, &debugger->stats.texturesUploaded);
+        VCDebugger_AdvanceSampleWindow(debugger, &debugger->stats.programsCreated);
         VCDebugger_AdvanceSampleWindow(debugger, &debugger->stats.prepareTime);
         VCDebugger_AdvanceSampleWindow(debugger, &debugger->stats.drawTime);
         VCDebugger_AdvanceSampleWindow(debugger, &debugger->stats.viRate);

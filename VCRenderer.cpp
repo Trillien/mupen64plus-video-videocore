@@ -128,7 +128,6 @@ void VCRenderer_CreateProgram(GLuint *program, GLuint vertexShader, GLuint fragm
 }
 
 void VCRenderer_DestroyProgram(VCProgram *program) {
-    printf("destroying program %d\n", (int)program->program);
     GL(glDeleteProgram(program->program));
     GL(glDeleteShader(program->vertexShader));
     GL(glDeleteShader(program->fragmentShader));
@@ -312,6 +311,8 @@ static bool VCRenderer_CanAddToCurrentBatch(VCRenderer *renderer, VCBlendFlags *
         batch->blendFlags.zUpdate == blendFlags->zUpdate &&
         batch->blendFlags.cullFront == blendFlags->cullFront &&
         batch->blendFlags.cullBack == blendFlags->cullBack &&
+        batch->blendFlags.blendMode == blendFlags->blendMode &&
+        batch->blendFlags.alphaThreshold == blendFlags->alphaThreshold &&
         batch->blendFlags.viewport.origin.x == blendFlags->viewport.origin.x &&
         batch->blendFlags.viewport.origin.y == blendFlags->viewport.origin.y &&
         batch->blendFlags.viewport.size.width == blendFlags->viewport.size.width &&
@@ -335,8 +336,8 @@ void VCRenderer_AddVertex(VCRenderer *renderer,
         gDP.primColor.a
     };
     VCShaderSubprogramContext subprogramContext =
-        VCShaderCompiler_CreateSubprogramContext(VCColor_ColorFToColor(envColor),
-                                                 VCColor_ColorFToColor(primColor),
+        VCShaderCompiler_CreateSubprogramContext(VCColor_ColorFToColor(primColor),
+                                                 VCColor_ColorFToColor(envColor),
                                                  gDP.otherMode.cycleType == G_CYC_2CYCLE,
                                                  mode);
     VCShaderSubprogramSignature subprogramSignature =
@@ -374,45 +375,50 @@ static void VCRenderer_CompileShaderProgram(VCRenderer *renderer,
                                             VCShaderProgram *shaderProgram,
                                             uint32_t shaderProgramID) {
     if (renderer->shaderProgramsCapacity < shaderProgramID + 1) {
-        renderer->shaderPrograms = (VCProgram *)realloc(renderer->shaderPrograms,
-                                                        sizeof(VCProgram) * (shaderProgramID + 1));
+        renderer->shaderPrograms = (VCCompiledShaderProgram *)
+            realloc(renderer->shaderPrograms,
+                    sizeof(VCCompiledShaderProgram) * (shaderProgramID + 1));
         renderer->shaderProgramsCapacity = shaderProgramID + 1;
     }
 
     for (size_t i = renderer->shaderProgramsLength; i < shaderProgramID + 1; i++) {
-        renderer->shaderPrograms[i].vertexShader = 0;
-        renderer->shaderPrograms[i].fragmentShader = 0;
-        renderer->shaderPrograms[i].program = 0;
+        renderer->shaderPrograms[i].program.vertexShader = 0;
+        renderer->shaderPrograms[i].program.fragmentShader = 0;
+        renderer->shaderPrograms[i].program.program = 0;
+        renderer->shaderPrograms[i].uAlphaThreshold = 0;
     }
 
-    VCProgram *program = &renderer->shaderPrograms[shaderProgramID];
+    VCCompiledShaderProgram *program = &renderer->shaderPrograms[shaderProgramID];
     renderer->shaderProgramsLength = shaderProgramID + 1;
 
-    VCRenderer_CompileShader(&program->vertexShader, GL_VERTEX_SHADER, "n64.vs.glsl");
+    VCRenderer_CompileShader(&program->program.vertexShader, GL_VERTEX_SHADER, "n64.vs.glsl");
 
     VCString fragmentShaderSource = VCString_Create();
     VCString_AppendCString(&fragmentShaderSource, renderer->shaderPreamble);
     VCShaderCompiler_GenerateGLSLFragmentShaderForProgram(&fragmentShaderSource, shaderProgram);
     // printf("New program:\n%s\n// end\n", fragmentShaderSource.ptr);
-    VCRenderer_CompileShaderFromCString(&program->fragmentShader,
+    VCRenderer_CompileShaderFromCString(&program->program.fragmentShader,
                                         GL_FRAGMENT_SHADER,
                                         fragmentShaderSource.ptr);
     VCString_Destroy(&fragmentShaderSource);
 
-    VCRenderer_CreateProgram(&program->program, program->vertexShader, program->fragmentShader);
-    GL(glBindAttribLocation(program->program, 0, "aPosition"));
-    GL(glBindAttribLocation(program->program, 1, "aTextureUv"));
-    GL(glBindAttribLocation(program->program, 2, "aTexture0Bounds"));
-    GL(glBindAttribLocation(program->program, 3, "aTexture1Bounds"));
-    GL(glBindAttribLocation(program->program, 4, "aShade"));
-    GL(glBindAttribLocation(program->program, 5, "aPrimitive"));
-    GL(glBindAttribLocation(program->program, 6, "aEnvironment"));
-    GL(glBindAttribLocation(program->program, 7, "aSubprogram"));
-    GL(glLinkProgram(program->program));
-    GL(glUseProgram(program->program));
+    VCRenderer_CreateProgram(&program->program.program,
+                             program->program.vertexShader,
+                             program->program.fragmentShader);
+    GL(glBindAttribLocation(program->program.program, 0, "aPosition"));
+    GL(glBindAttribLocation(program->program.program, 1, "aTextureUv"));
+    GL(glBindAttribLocation(program->program.program, 2, "aTexture0Bounds"));
+    GL(glBindAttribLocation(program->program.program, 3, "aTexture1Bounds"));
+    GL(glBindAttribLocation(program->program.program, 4, "aShade"));
+    GL(glBindAttribLocation(program->program.program, 5, "aPrimitive"));
+    GL(glBindAttribLocation(program->program.program, 6, "aEnvironment"));
+    GL(glBindAttribLocation(program->program.program, 7, "aSubprogram"));
+    GL(glLinkProgram(program->program.program));
+    GL(glUseProgram(program->program.program));
 
-    GLint uTexture = glGetUniformLocation(program->program, "uTexture");
+    GLint uTexture = glGetUniformLocation(program->program.program, "uTexture");
     GL(glUniform1i(uTexture, 0));
+    program->uAlphaThreshold = glGetUniformLocation(program->program.program, "uAlphaThreshold");
 
     VCDebugger_IncrementSample(renderer->debugger, &renderer->debugger->stats.programsCreated);
 }
@@ -420,7 +426,9 @@ static void VCRenderer_CompileShaderProgram(VCRenderer *renderer,
 static void VCRenderer_DestroyShaderProgram(VCRenderer *renderer, uint32_t shaderProgramID) {
     assert(shaderProgramID < renderer->shaderProgramsLength);
     assert(shaderProgramID < renderer->shaderProgramsCapacity);
-    VCRenderer_DestroyProgram(&renderer->shaderPrograms[shaderProgramID]);
+    VCCompiledShaderProgram *program = &renderer->shaderPrograms[shaderProgramID];
+    VCRenderer_DestroyProgram(&program->program);
+    program->uAlphaThreshold = 0;
 }
 
 static int VCRenderer_ThreadMain(void *userData) {
@@ -598,9 +606,7 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
     GL(glDisable(GL_BLEND));
     GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
     GL(glDisable(GL_SCISSOR_TEST));
-    GL(glEnable(GL_BLEND));
     GL(glEnable(GL_DEPTH_TEST));
-    GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
 
     GL(glActiveTexture(GL_TEXTURE0));
     VCAtlas_Bind(&renderer->atlas);
@@ -610,10 +616,11 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
         VCBatch *batch = &batches[batchIndex];
         assert(batch->programIDPresent);
         assert(batch->program.id < renderer->shaderProgramsLength);
-        GL(glUseProgram(renderer->shaderPrograms[batch->program.id].program));
+        VCCompiledShaderProgram *program = &renderer->shaderPrograms[batch->program.id];
+        GL(glUseProgram(program->program.program));
 
         GL(glDepthMask(batch->blendFlags.zUpdate ? GL_TRUE : GL_FALSE));
-        GL(glDepthFunc(batch->blendFlags.zTest ? GL_LESS : GL_ALWAYS));
+        GL(glDepthFunc(batch->blendFlags.zTest ? GL_LEQUAL : GL_ALWAYS));
 
         if (batch->blendFlags.cullFront || batch->blendFlags.cullBack) {
             GLenum cullMode;
@@ -628,6 +635,30 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
         } else {
             GL(glDisable(GL_CULL_FACE));
         }
+
+        if (batch->blendFlags.blendMode == VC_BLEND_MODE_DISABLED) {
+            GL(glDisable(GL_BLEND));
+        } else {
+            GL(glEnable(GL_BLEND));
+            switch (batch->blendFlags.blendMode) {
+            case VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA:
+                GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+                break;
+            case VC_BLEND_MODE_SRC_ONE_DEST_ONE:
+                GL(glBlendFunc(GL_ONE, GL_ONE));
+                break;
+            case VC_BLEND_MODE_SRC_ONE_DEST_ZERO:
+                GL(glBlendFunc(GL_ONE, GL_ZERO));
+                break;
+            case VC_BLEND_MODE_SRC_ZERO_DEST_ONE:
+                GL(glBlendFunc(GL_ZERO, GL_ONE));
+                break;
+            default:
+                assert(0 && "Unknown blend mode!");
+            }
+        }
+
+        GL(glUniform1f(program->uAlphaThreshold, batch->blendFlags.alphaThreshold));
 
         GL(glViewport(batch->blendFlags.viewport.origin.x,
                       VC_N64_HEIGHT - (batch->blendFlags.viewport.origin.y +
@@ -817,5 +848,40 @@ void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer) {
             VCRenderer_EnqueueCommand(renderer, &expireCommand);
         }
     }
+}
+
+uint8_t VCRenderer_GetCurrentBlendMode(uint8_t triangleMode) {
+    if (triangleMode == VC_TRIANGLE_MODE_TEXTURE_RECTANGLE)
+        return VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA;
+
+    if (gDP.otherMode.cycleType == G_CYC_FILL)
+        return VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA;
+
+    if (gDP.otherMode.forceBlender &&
+        gDP.otherMode.cycleType != G_CYC_COPY &&
+        !gDP.otherMode.alphaCvgSel) {
+        switch (gDP.otherMode.l >> 16) {
+            case 0x0448: // Add
+            case 0x055A:
+                return VC_BLEND_MODE_SRC_ONE_DEST_ONE;
+            case 0x0C08: // 1080 Sky
+            case 0x0F0A: // Used LOTS of places
+                return VC_BLEND_MODE_SRC_ONE_DEST_ZERO;
+            case 0xC810: // Blends fog
+            case 0xC811: // Blends fog
+            case 0x0C18: // Standard interpolated blend
+            case 0x0C19: // Used for antialiasing
+            case 0x0050: // Standard interpolated blend
+            case 0x0055: // Used for antialiasing
+                return VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA;
+            case 0x0FA5: // Seems to be doing just blend color - maybe combiner can be used for this?
+            case 0x5055: // Used in Paper Mario intro, I'm not sure if this is right...
+                return VC_BLEND_MODE_SRC_ZERO_DEST_ONE;
+            default:
+                return VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA;
+        }
+    }
+
+    return VC_BLEND_MODE_DISABLED;
 }
 

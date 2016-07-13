@@ -268,44 +268,47 @@ static uint8_t VCShaderCompiler_GetRGBValue(VCShaderSubprogramContext *context,
                                             uint8_t source,
                                             bool allowCombined) {
     switch (source) {
-    case G_CCMUX_COMBINED:
-    case G_CCMUX_COMBINED_ALPHA:
-        // FIXME(tachi): Support G_CCMUX_COMBINED_ALPHA!
+    case VC_COMBINER_CCMUX_COMBINED:
         if (allowCombined)
             return VC_SHADER_COMPILER_REGISTER_VALUE | 2;
         return VC_SHADER_COMPILER_ZERO_VALUE;
-    case G_CCMUX_TEXEL0:
+    case VC_COMBINER_CCMUX_COMBINED_ALPHA:
+        // FIXME(tachi): Support VC_COMBINER_CCMUX_COMBINED_ALPHA!
+        return VC_SHADER_COMPILER_ONE_VALUE;
+    case VC_COMBINER_CCMUX_TEXEL0:
         return VC_SHADER_COMPILER_TEXEL0_VALUE;
-    case G_CCMUX_TEXEL0_ALPHA:
+    case VC_COMBINER_CCMUX_TEXEL0_ALPHA:
         return VC_SHADER_COMPILER_TEXEL0_ALPHA_VALUE;
-    case G_CCMUX_TEXEL1:
+    case VC_COMBINER_CCMUX_TEXEL1:
         return VC_SHADER_COMPILER_TEXEL1_VALUE;
-    case G_CCMUX_TEXEL1_ALPHA:
+    case VC_COMBINER_CCMUX_TEXEL1_ALPHA:
         return VC_SHADER_COMPILER_TEXEL1_ALPHA_VALUE;
-    case G_CCMUX_SHADE:
+    case VC_COMBINER_CCMUX_SHADE:
         return VC_SHADER_COMPILER_SHADE_VALUE;
-    case G_CCMUX_SHADE_ALPHA:
+    case VC_COMBINER_CCMUX_SHADE_ALPHA:
         return VC_SHADER_COMPILER_SHADE_ALPHA_VALUE;
-    case G_CCMUX_PRIMITIVE:
+    case VC_COMBINER_CCMUX_PRIMITIVE:
         return VCShaderCompiler_SpecialRGBValueOrConstant(&context->primColor,
                                                           VC_SHADER_COMPILER_PRIMITIVE_VALUE);
-    case G_CCMUX_ENVIRONMENT:
-        return VCShaderCompiler_SpecialRGBValueOrConstant(&context->primColor,
+    case VC_COMBINER_CCMUX_ENVIRONMENT:
+        return VCShaderCompiler_SpecialRGBValueOrConstant(&context->envColor,
                                                           VC_SHADER_COMPILER_ENVIRONMENT_VALUE);
-    case G_CCMUX_PRIMITIVE_ALPHA:
+    case VC_COMBINER_CCMUX_PRIMITIVE_ALPHA:
         return VCShaderCompiler_SpecialAlphaValueOrConstant(
             &context->primColor,
             VC_SHADER_COMPILER_PRIMITIVE_ALPHA_VALUE);
-    case G_CCMUX_ENV_ALPHA:
+    case VC_COMBINER_CCMUX_ENV_ALPHA:
         return VCShaderCompiler_SpecialAlphaValueOrConstant(
             &context->envColor,
             VC_SHADER_COMPILER_ENVIRONMENT_ALPHA_VALUE);
-    case G_CCMUX_0:
+    case VC_COMBINER_CCMUX_NOISE:
+        return VC_SHADER_COMPILER_ONE_VALUE;
+    case VC_COMBINER_CCMUX_0:
         return VC_SHADER_COMPILER_ZERO_VALUE;
-    case G_CCMUX_1:
+    case VC_COMBINER_CCMUX_1:
         return VC_SHADER_COMPILER_ONE_VALUE;
     }
-    // FIXME(tachi): Support K5!
+    // FIXME(tachi): Support K4, K5!
     return VC_SHADER_COMPILER_ZERO_VALUE;
 }
 
@@ -314,28 +317,28 @@ static uint8_t VCShaderCompiler_GetAlphaValue(VCShaderSubprogramContext *context
                                               uint8_t source,
                                               bool allowCombined) {
     switch (source) {
-    case G_ACMUX_COMBINED:
+    case VC_COMBINER_ACMUX_COMBINED:
         if (allowCombined)
             return VC_SHADER_COMPILER_REGISTER_VALUE | 2;
         return VC_SHADER_COMPILER_ZERO_VALUE;
-    case G_ACMUX_TEXEL0:
+    case VC_COMBINER_ACMUX_TEXEL0:
         return VC_SHADER_COMPILER_TEXEL0_VALUE;
-    case G_ACMUX_TEXEL1:
+    case VC_COMBINER_ACMUX_TEXEL1:
         return VC_SHADER_COMPILER_TEXEL1_VALUE;
-    case G_ACMUX_SHADE:
+    case VC_COMBINER_ACMUX_SHADE:
         return VC_SHADER_COMPILER_SHADE_VALUE;
-    case G_ACMUX_PRIMITIVE:
-        return VCShaderCompiler_SpecialRGBValueOrConstant(&context->primColor,
-                                                          VC_SHADER_COMPILER_PRIMITIVE_VALUE);
-    case G_ACMUX_ENVIRONMENT:
-        return VCShaderCompiler_SpecialRGBValueOrConstant(&context->primColor,
-                                                          VC_SHADER_COMPILER_ENVIRONMENT_VALUE);
-    case G_ACMUX_0:
+    case VC_COMBINER_ACMUX_PRIMITIVE:
+        return VCShaderCompiler_SpecialAlphaValueOrConstant(&context->primColor,
+                                                            VC_SHADER_COMPILER_PRIMITIVE_VALUE);
+    case VC_COMBINER_ACMUX_ENVIRONMENT:
+        return VCShaderCompiler_SpecialAlphaValueOrConstant(&context->envColor,
+                                                            VC_SHADER_COMPILER_ENVIRONMENT_VALUE);
+    case VC_COMBINER_ACMUX_0:
         return VC_SHADER_COMPILER_ZERO_VALUE;
-    case G_ACMUX_1:
+    case VC_COMBINER_ACMUX_1:
         return VC_SHADER_COMPILER_ONE_VALUE;
     }
-    // FIXME(tachi): Support K5!
+    // FIXME(tachi): Support G_ACMUX_PRIM_LOD_FRAC!
     return VC_SHADER_COMPILER_ZERO_VALUE;
 }
 
@@ -700,19 +703,19 @@ static void VCShaderCompiler_CreateSubprogramForTextureRectangleTriangleMode(
         VCShaderSubprogramSource *source,
         VCShaderSubprogram *subprogram) {
     VCUnpackedCombinerFunction cycle0Function;
-    cycle0Function.sa = G_CCMUX_TEXEL0;
-    cycle0Function.sb = G_CCMUX_0;
-    cycle0Function.m = G_CCMUX_1;
-    cycle0Function.a = G_CCMUX_0;
+    cycle0Function.sa = VC_COMBINER_CCMUX_TEXEL0;
+    cycle0Function.sb = VC_COMBINER_CCMUX_0;
+    cycle0Function.m = VC_COMBINER_CCMUX_1;
+    cycle0Function.a = VC_COMBINER_CCMUX_0;
     subprogram->rgb = VCShaderCompiler_GenerateFunction(&source->context,
                                                         VC_SHADER_COMPILER_MODE_RGB,
                                                         &cycle0Function,
                                                         NULL);
 
-    cycle0Function.sa = G_ACMUX_TEXEL0;
-    cycle0Function.sb = G_ACMUX_0;
-    cycle0Function.m = G_ACMUX_1;
-    cycle0Function.a = G_ACMUX_0;
+    cycle0Function.sa = VC_COMBINER_ACMUX_TEXEL0;
+    cycle0Function.sb = VC_COMBINER_ACMUX_0;
+    cycle0Function.m = VC_COMBINER_ACMUX_1;
+    cycle0Function.a = VC_COMBINER_ACMUX_0;
     subprogram->a = VCShaderCompiler_GenerateFunction(&source->context,
                                                       VC_SHADER_COMPILER_MODE_ALPHA,
                                                       &cycle0Function,
@@ -723,19 +726,19 @@ static void VCShaderCompiler_CreateSubprogramForRectFillTriangleMode(
         VCShaderSubprogramSource *source,
         VCShaderSubprogram *subprogram) {
     VCUnpackedCombinerFunction cycle0Function;
-    cycle0Function.sa = G_CCMUX_SHADE;
-    cycle0Function.sb = G_CCMUX_0;
-    cycle0Function.m = G_CCMUX_1;
-    cycle0Function.a = G_CCMUX_0;
+    cycle0Function.sa = VC_COMBINER_CCMUX_SHADE;
+    cycle0Function.sb = VC_COMBINER_CCMUX_0;
+    cycle0Function.m = VC_COMBINER_CCMUX_1;
+    cycle0Function.a = VC_COMBINER_CCMUX_0;
     subprogram->rgb = VCShaderCompiler_GenerateFunction(&source->context,
                                                         VC_SHADER_COMPILER_MODE_RGB,
                                                         &cycle0Function,
                                                         NULL);
 
-    cycle0Function.sa = G_ACMUX_SHADE;
-    cycle0Function.sb = G_ACMUX_0;
-    cycle0Function.m = G_ACMUX_1;
-    cycle0Function.a = G_ACMUX_0;
+    cycle0Function.sa = VC_COMBINER_ACMUX_SHADE;
+    cycle0Function.sb = VC_COMBINER_ACMUX_0;
+    cycle0Function.m = VC_COMBINER_ACMUX_1;
+    cycle0Function.a = VC_COMBINER_ACMUX_0;
     subprogram->a = VCShaderCompiler_GenerateFunction(&source->context,
                                                       VC_SHADER_COMPILER_MODE_ALPHA,
                                                       &cycle0Function,
@@ -835,8 +838,6 @@ static void VCShaderCompiler_GenerateGLSLForFunction(VCString *shaderSource,
                                               outputLocation,
                                               instruction->destination);
         VCString_AppendCString(shaderSource, " = ");
-        if (instruction->operation != VC_SHADER_INSTRUCTION_MOVE)
-            VCString_AppendCString(shaderSource, "clamp(");
         VCShaderCompiler_GenerateGLSLForValue(shaderSource,
                                               function,
                                               outputLocation,
@@ -862,7 +863,6 @@ static void VCShaderCompiler_GenerateGLSLForFunction(VCString *shaderSource,
                                                   function,
                                                   outputLocation,
                                                   instruction->operands[1]);
-            VCString_AppendCString(shaderSource, ", 0.0, 1.0)");
         }
         VCString_AppendCString(shaderSource, ";\n");
     }
@@ -914,6 +914,8 @@ void VCShaderCompiler_GenerateGLSLFragmentShaderForProgram(VCString *shaderSourc
         VCShaderCompiler_GenerateGLSLForFunction(shaderSource, &subprogram->a, "fragA");
     }
     VCString_AppendCString(shaderSource, "    }\n");
+    VCString_AppendCString(shaderSource, "    if (fragA.a < uAlphaThreshold)\n");
+    VCString_AppendCString(shaderSource, "        discard;\n");
     VCString_AppendCString(shaderSource, "    gl_FragColor = vec4(fragRGB.rgb, fragA.a);\n");
     VCString_AppendCString(shaderSource, "}\n");
 }

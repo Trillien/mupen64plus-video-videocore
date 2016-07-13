@@ -6,57 +6,85 @@
 #include "GBI.h"
 #include "VCCombiner.h"
 
+#if 0
 #define VC_CCMUX_SHADE_TIMES_ENVIRONMENT    32
 #define VC_CCMUX_SHADE_TIMES_PRIMITIVE      33
+#endif
 
 static const uint8_t saRGBMapping[] = {
-	G_CCMUX_COMBINED,	    G_CCMUX_TEXEL0,		    G_CCMUX_TEXEL1,		    G_CCMUX_PRIMITIVE, 
-	G_CCMUX_SHADE,			G_CCMUX_ENVIRONMENT,	G_CCMUX_NOISE,			G_CCMUX_1,
-	G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,
-	G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0
+	VC_COMBINER_CCMUX_COMBINED,    VC_COMBINER_CCMUX_TEXEL0,
+    VC_COMBINER_CCMUX_TEXEL1,		    VC_COMBINER_CCMUX_PRIMITIVE, 
+	VC_COMBINER_CCMUX_SHADE,			VC_COMBINER_CCMUX_ENVIRONMENT,
+    VC_COMBINER_CCMUX_NOISE,			VC_COMBINER_CCMUX_1,
+	VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+    VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+	VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+    VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0
 };
 
 static const uint8_t sbRGBMapping[] = {
-	G_CCMUX_COMBINED,		G_CCMUX_TEXEL0,		    G_CCMUX_TEXEL1,		    G_CCMUX_PRIMITIVE, 
-	G_CCMUX_SHADE,			G_CCMUX_ENVIRONMENT,	G_CCMUX_CENTER,		    G_CCMUX_K4,
-	G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,
-	G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0
+	VC_COMBINER_CCMUX_COMBINED,		VC_COMBINER_CCMUX_TEXEL0,
+    VC_COMBINER_CCMUX_TEXEL1,		    VC_COMBINER_CCMUX_PRIMITIVE, 
+	VC_COMBINER_CCMUX_SHADE,			VC_COMBINER_CCMUX_ENVIRONMENT,
+    VC_COMBINER_CCMUX_CENTER,		    VC_COMBINER_CCMUX_K4,
+	VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+    VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+	VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+    VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0
 };
 
 static const uint8_t mRGBMapping[] = {
-	G_CCMUX_COMBINED,		G_CCMUX_TEXEL0,		    G_CCMUX_TEXEL1,	        G_CCMUX_PRIMITIVE, 
-	G_CCMUX_SHADE,			G_CCMUX_ENVIRONMENT,	G_CCMUX_SCALE,		    G_CCMUX_COMBINED_ALPHA,
-	G_CCMUX_TEXEL0_ALPHA,	G_CCMUX_TEXEL1_ALPHA,   G_CCMUX_PRIMITIVE_ALPHA, G_CCMUX_SHADE_ALPHA,
-	G_CCMUX_ENV_ALPHA,		G_CCMUX_LOD_FRACTION,	G_CCMUX_PRIM_LOD_FRAC,	G_CCMUX_K5,
-	G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,
-	G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,
-	G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,
-	G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0,				G_CCMUX_0
+	VC_COMBINER_CCMUX_COMBINED,		VC_COMBINER_CCMUX_TEXEL0,
+    VC_COMBINER_CCMUX_TEXEL1,	        VC_COMBINER_CCMUX_PRIMITIVE, 
+	VC_COMBINER_CCMUX_SHADE,			VC_COMBINER_CCMUX_ENVIRONMENT,
+    VC_COMBINER_CCMUX_SCALE,		    VC_COMBINER_CCMUX_COMBINED_ALPHA,
+	VC_COMBINER_CCMUX_TEXEL0_ALPHA,	VC_COMBINER_CCMUX_TEXEL1_ALPHA,
+    VC_COMBINER_CCMUX_PRIMITIVE_ALPHA, VC_COMBINER_CCMUX_SHADE_ALPHA,
+	VC_COMBINER_CCMUX_ENV_ALPHA,		VC_COMBINER_CCMUX_LOD_FRACTION,
+    VC_COMBINER_CCMUX_PRIM_LOD_FRAC,	VC_COMBINER_CCMUX_K5,
+	VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+    VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+	VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+    VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+	VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+    VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+	VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0,
+    VC_COMBINER_CCMUX_0,				VC_COMBINER_CCMUX_0
 };
 
 static const uint8_t aRGBMapping[] = {
-	G_CCMUX_COMBINED,		G_CCMUX_TEXEL0,			G_CCMUX_TEXEL1,		    G_CCMUX_PRIMITIVE, 
-	G_CCMUX_SHADE,			G_CCMUX_ENVIRONMENT,	G_CCMUX_1,				G_CCMUX_0,
+	VC_COMBINER_CCMUX_COMBINED,		VC_COMBINER_CCMUX_TEXEL0,
+    VC_COMBINER_CCMUX_TEXEL1,		    VC_COMBINER_CCMUX_PRIMITIVE, 
+	VC_COMBINER_CCMUX_SHADE,			VC_COMBINER_CCMUX_ENVIRONMENT,
+    VC_COMBINER_CCMUX_1,				VC_COMBINER_CCMUX_0,
 };
 
 static uint8_t saAMapping[] = {
-	G_ACMUX_COMBINED,		G_ACMUX_TEXEL0,			G_ACMUX_TEXEL1,			G_ACMUX_PRIMITIVE, 
-	G_ACMUX_SHADE,			G_ACMUX_ENVIRONMENT,	G_ACMUX_1,				G_ACMUX_0,
+	VC_COMBINER_ACMUX_COMBINED,		VC_COMBINER_ACMUX_TEXEL0,
+    VC_COMBINER_ACMUX_TEXEL1,			VC_COMBINER_ACMUX_PRIMITIVE, 
+	VC_COMBINER_ACMUX_SHADE,			VC_COMBINER_ACMUX_ENVIRONMENT,
+    VC_COMBINER_ACMUX_1,				VC_COMBINER_ACMUX_0,
 };
 
 static uint8_t sbAMapping[] = {
-	G_ACMUX_COMBINED,		G_ACMUX_TEXEL0,			G_ACMUX_TEXEL1,			G_ACMUX_PRIMITIVE, 
-	G_ACMUX_SHADE,			G_ACMUX_ENVIRONMENT,	G_ACMUX_1,				G_ACMUX_0,
+	VC_COMBINER_ACMUX_COMBINED,		VC_COMBINER_ACMUX_TEXEL0,
+    VC_COMBINER_ACMUX_TEXEL1,			VC_COMBINER_ACMUX_PRIMITIVE, 
+	VC_COMBINER_ACMUX_SHADE,			VC_COMBINER_ACMUX_ENVIRONMENT,
+    VC_COMBINER_ACMUX_1,				VC_COMBINER_ACMUX_0,
 };
 
 static uint8_t mAMapping[] = {
-	G_ACMUX_LOD_FRACTION,	G_ACMUX_TEXEL0,			G_ACMUX_TEXEL1,			G_ACMUX_PRIMITIVE, 
-	G_ACMUX_SHADE,			G_ACMUX_ENVIRONMENT,	G_ACMUX_PRIM_LOD_FRAC,	G_ACMUX_0,
+	VC_COMBINER_ACMUX_LOD_FRACTION,	VC_COMBINER_ACMUX_TEXEL0,
+    VC_COMBINER_ACMUX_TEXEL1,			VC_COMBINER_ACMUX_PRIMITIVE, 
+	VC_COMBINER_ACMUX_SHADE,			VC_COMBINER_ACMUX_ENVIRONMENT,
+    VC_COMBINER_ACMUX_PRIM_LOD_FRAC,	VC_COMBINER_ACMUX_0,
 };
 
 static uint8_t aAMapping[] = {
-	G_ACMUX_COMBINED,		G_ACMUX_TEXEL0,			G_ACMUX_TEXEL1,			G_ACMUX_PRIMITIVE, 
-	G_ACMUX_SHADE,			G_ACMUX_ENVIRONMENT,	G_ACMUX_1,				G_ACMUX_0,
+	VC_COMBINER_ACMUX_COMBINED,		VC_COMBINER_ACMUX_TEXEL0,
+    VC_COMBINER_ACMUX_TEXEL1,			VC_COMBINER_ACMUX_PRIMITIVE, 
+	VC_COMBINER_ACMUX_SHADE,			VC_COMBINER_ACMUX_ENVIRONMENT,
+    VC_COMBINER_ACMUX_1,				VC_COMBINER_ACMUX_0,
 };
 
 static const char *saRGBText[] =
@@ -118,27 +146,57 @@ static const char *aAText[] =
 };
 
 void VCCombiner_UnpackCurrentRGBCombiner(VCUnpackedCombiner *cycle0, VCUnpackedCombiner *cycle1) {
-    cycle0->saRGB = saRGBMapping[gDP.combine.saRGB0];
-    cycle0->sbRGB = sbRGBMapping[gDP.combine.sbRGB0];
-    cycle0->mRGB = mRGBMapping[gDP.combine.mRGB0];
-    cycle0->aRGB = aRGBMapping[gDP.combine.aRGB0];
+    switch (gDP.otherMode.cycleType) {
+    case G_CYC_COPY:
+        cycle0->saRGB = cycle1->saRGB = VC_COMBINER_CCMUX_TEXEL0;
+        cycle0->sbRGB = cycle1->sbRGB = VC_COMBINER_CCMUX_0;
+        cycle0->mRGB = cycle1->mRGB = VC_COMBINER_CCMUX_1;
+        cycle0->aRGB = cycle1->aRGB = VC_COMBINER_CCMUX_0;
+        return;
+    case G_CYC_FILL:
+        cycle0->saRGB = cycle1->saRGB = VC_COMBINER_CCMUX_SHADE;
+        cycle0->sbRGB = cycle1->sbRGB = VC_COMBINER_CCMUX_0;
+        cycle0->mRGB = cycle1->mRGB = VC_COMBINER_CCMUX_1;
+        cycle0->aRGB = cycle1->aRGB = VC_COMBINER_CCMUX_0;
+        return;
+    default:
+        cycle0->saRGB = saRGBMapping[gDP.combine.saRGB0];
+        cycle0->sbRGB = sbRGBMapping[gDP.combine.sbRGB0];
+        cycle0->mRGB = mRGBMapping[gDP.combine.mRGB0];
+        cycle0->aRGB = aRGBMapping[gDP.combine.aRGB0];
 
-    cycle1->saRGB = saRGBMapping[gDP.combine.saRGB1];
-    cycle1->sbRGB = sbRGBMapping[gDP.combine.sbRGB1];
-    cycle1->mRGB = mRGBMapping[gDP.combine.mRGB1];
-    cycle1->aRGB = aRGBMapping[gDP.combine.aRGB1];
+        cycle1->saRGB = saRGBMapping[gDP.combine.saRGB1];
+        cycle1->sbRGB = sbRGBMapping[gDP.combine.sbRGB1];
+        cycle1->mRGB = mRGBMapping[gDP.combine.mRGB1];
+        cycle1->aRGB = aRGBMapping[gDP.combine.aRGB1];
+    }
 }
 
 void VCCombiner_UnpackCurrentACombiner(VCUnpackedCombiner *cycle0, VCUnpackedCombiner *cycle1) {
-    cycle0->saA = saAMapping[gDP.combine.saA0];
-    cycle0->sbA = sbAMapping[gDP.combine.sbA0];
-    cycle0->mA = mAMapping[gDP.combine.mA0];
-    cycle0->aA = aAMapping[gDP.combine.aA0];
+    switch (gDP.otherMode.cycleType) {
+    case G_CYC_COPY:
+        cycle0->saA = cycle1->saA = VC_COMBINER_ACMUX_TEXEL0;
+        cycle0->sbA = cycle1->sbA = VC_COMBINER_ACMUX_0;
+        cycle0->mA = cycle1->mA = VC_COMBINER_ACMUX_1;
+        cycle0->aA = cycle1->aA = VC_COMBINER_ACMUX_0;
+        return;
+    case G_CYC_FILL:
+        cycle0->saA = cycle1->saA = VC_COMBINER_ACMUX_SHADE;
+        cycle0->sbA = cycle1->sbA = VC_COMBINER_ACMUX_0;
+        cycle0->mA = cycle1->mA = VC_COMBINER_ACMUX_1;
+        cycle0->aA = cycle1->aA = VC_COMBINER_ACMUX_0;
+        return;
+    default:
+        cycle0->saA = saAMapping[gDP.combine.saA0];
+        cycle0->sbA = sbAMapping[gDP.combine.sbA0];
+        cycle0->mA = mAMapping[gDP.combine.mA0];
+        cycle0->aA = aAMapping[gDP.combine.aA0];
 
-    cycle1->saA = saAMapping[gDP.combine.saA1];
-    cycle1->sbA = sbAMapping[gDP.combine.sbA1];
-    cycle1->mA = mAMapping[gDP.combine.mA1];
-    cycle1->aA = aAMapping[gDP.combine.aA1];
+        cycle1->saA = saAMapping[gDP.combine.saA1];
+        cycle1->sbA = sbAMapping[gDP.combine.sbA1];
+        cycle1->mA = mAMapping[gDP.combine.mA1];
+        cycle1->aA = aAMapping[gDP.combine.aA1];
+    }
 }
 
 #if 0
@@ -370,8 +428,8 @@ void VCCombiner_FillCombinerForTextureBlit(VCCombiner *vcCombiner) {
     VCCombiner_ZeroCombineStage(&vcCombiner->combineC);
     VCCombiner_FillCombineStage(&vcCombiner->combineD,
                                 NULL,
-                                G_CCMUX_TEXEL0,
-                                G_ACMUX_TEXEL0);
+                                VC_COMBINER_CCMUX_TEXEL0,
+                                VC_COMBINER_ACMUX_TEXEL0);
 }
 
 void VCCombiner_FillCombinerForRectFill(VCCombiner *vcCombiner, VCColorf *fillColor) {
@@ -380,8 +438,8 @@ void VCCombiner_FillCombinerForRectFill(VCCombiner *vcCombiner, VCColorf *fillCo
     VCCombiner_ZeroCombineStage(&vcCombiner->combineC);
     VCCombiner_FillCombineStage(&vcCombiner->combineD,
                                 fillColor,
-                                G_CCMUX_SHADE,
-                                G_ACMUX_SHADE);
+                                VC_COMBINER_CCMUX_SHADE,
+                                VC_COMBINER_ACMUX_SHADE);
 }
 #endif
 

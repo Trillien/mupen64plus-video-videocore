@@ -2,6 +2,10 @@
 //
 // Copyright (c) 2016 The mupen64plus-video-videocore Authors
 
+#ifdef __linux__
+#include <linux/limits.h>
+#endif
+
 #include <fstream>
 #include <iostream>
 #include <stdlib.h>
@@ -66,7 +70,6 @@ static char *VCConfig_GetString(const toml::Value &topValue,
 void VCConfig_Read(VCConfig *config) {
     char *path = (char *)malloc(PATH_MAX + 1);
 
-    std::ifstream input;
     const char *configHome = getenv("XDG_CONFIG_HOME");
     if (configHome == NULL || configHome[0] == '\0') {
         configHome = ".config";
@@ -74,12 +77,11 @@ void VCConfig_Read(VCConfig *config) {
         if (home == NULL)
             home = ".";
         snprintf(path, PATH_MAX, "%s/.config/mupen64plus/videocore.conf", home);
-        input = std::ifstream(path);
     } else {
         snprintf(path, PATH_MAX, "%s/mupen64plus/videocore.conf", configHome);
-        input = std::ifstream(path);
     }
 
+    std::ifstream input(path);
     if (input.fail()) {
         const char *configDirsLocation = getenv("XDG_CONFIG_DIRS");
         if (configDirsLocation == NULL || configDirsLocation[0] == '\0')
@@ -96,7 +98,7 @@ void VCConfig_Read(VCConfig *config) {
                 return;
             }
             snprintf(path, PATH_MAX, "%s/mupen64plus/videocore.conf", configDir);
-            input = std::ifstream(path);
+            input.open(path);
         } while (input.fail());
     }
     free(path);

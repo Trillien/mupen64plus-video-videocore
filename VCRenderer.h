@@ -18,6 +18,12 @@
 #define VC_TRIANGLE_MODE_TEXTURE_RECTANGLE  1
 #define VC_TRIANGLE_MODE_RECT_FILL          2
 
+#define VC_BLEND_MODE_DISABLED                                  0
+#define VC_BLEND_MODE_SRC_ONE_DEST_ONE                          1
+#define VC_BLEND_MODE_SRC_ONE_DEST_ZERO                         2
+#define VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA    3
+#define VC_BLEND_MODE_SRC_ZERO_DEST_ONE                         4
+
 #include <SDL2/SDL.h>
 #include <stdint.h>
 #include "VCAtlas.h"
@@ -35,6 +41,8 @@ struct VCBlendFlags {
     bool zUpdate;
     bool cullFront;
     bool cullBack;
+    uint8_t blendMode;
+    float alphaThreshold;
     VCRectf viewport;
 };
 
@@ -75,6 +83,11 @@ struct VCRenderCommand {
     VCShaderProgram *shaderProgram;
 };
 
+struct VCCompiledShaderProgram {
+    VCProgram program;
+    GLint uAlphaThreshold;
+};
+
 struct VCRenderer {
     SDL_Window *window;
     SDL_GLContext context;
@@ -106,7 +119,7 @@ struct VCRenderer {
     VCProgram blitProgram;
     GLuint quadVBO;
 
-    VCProgram *shaderPrograms;
+    VCCompiledShaderProgram *shaderPrograms;
     size_t shaderProgramsLength;
     size_t shaderProgramsCapacity;
     char *shaderPreamble;
@@ -134,6 +147,7 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
                                      uint32_t indexCount,
                                      uint8_t mode);
 void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer);
+uint8_t VCRenderer_GetCurrentBlendMode(uint8_t triangleMode);
 
 #endif
 

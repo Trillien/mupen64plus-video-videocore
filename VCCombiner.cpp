@@ -148,16 +148,16 @@ static const char *aAText[] =
 void VCCombiner_UnpackCurrentRGBCombiner(VCUnpackedCombiner *cycle0, VCUnpackedCombiner *cycle1) {
     switch (gDP.otherMode.cycleType) {
     case G_CYC_COPY:
-        cycle0->saRGB = cycle1->saRGB = VC_COMBINER_CCMUX_TEXEL0;
+        cycle0->saRGB = cycle1->saRGB = VC_COMBINER_CCMUX_0;
         cycle0->sbRGB = cycle1->sbRGB = VC_COMBINER_CCMUX_0;
-        cycle0->mRGB = cycle1->mRGB = VC_COMBINER_CCMUX_1;
-        cycle0->aRGB = cycle1->aRGB = VC_COMBINER_CCMUX_0;
+        cycle0->mRGB = cycle1->mRGB = VC_COMBINER_CCMUX_0;
+        cycle0->aRGB = cycle1->aRGB = VC_COMBINER_CCMUX_TEXEL0;
         return;
     case G_CYC_FILL:
-        cycle0->saRGB = cycle1->saRGB = VC_COMBINER_CCMUX_SHADE;
+        cycle0->saRGB = cycle1->saRGB = VC_COMBINER_CCMUX_0;
         cycle0->sbRGB = cycle1->sbRGB = VC_COMBINER_CCMUX_0;
-        cycle0->mRGB = cycle1->mRGB = VC_COMBINER_CCMUX_1;
-        cycle0->aRGB = cycle1->aRGB = VC_COMBINER_CCMUX_0;
+        cycle0->mRGB = cycle1->mRGB = VC_COMBINER_CCMUX_0;
+        cycle0->aRGB = cycle1->aRGB = VC_COMBINER_CCMUX_SHADE;
         return;
     default:
         cycle0->saRGB = saRGBMapping[gDP.combine.saRGB0];
@@ -175,16 +175,16 @@ void VCCombiner_UnpackCurrentRGBCombiner(VCUnpackedCombiner *cycle0, VCUnpackedC
 void VCCombiner_UnpackCurrentACombiner(VCUnpackedCombiner *cycle0, VCUnpackedCombiner *cycle1) {
     switch (gDP.otherMode.cycleType) {
     case G_CYC_COPY:
-        cycle0->saA = cycle1->saA = VC_COMBINER_ACMUX_TEXEL0;
+        cycle0->saA = cycle1->saA = VC_COMBINER_ACMUX_0;
         cycle0->sbA = cycle1->sbA = VC_COMBINER_ACMUX_0;
-        cycle0->mA = cycle1->mA = VC_COMBINER_ACMUX_1;
-        cycle0->aA = cycle1->aA = VC_COMBINER_ACMUX_0;
+        cycle0->mA = cycle1->mA = VC_COMBINER_ACMUX_0;
+        cycle0->aA = cycle1->aA = VC_COMBINER_ACMUX_TEXEL0;
         return;
     case G_CYC_FILL:
-        cycle0->saA = cycle1->saA = VC_COMBINER_ACMUX_SHADE;
+        cycle0->saA = cycle1->saA = VC_COMBINER_ACMUX_0;
         cycle0->sbA = cycle1->sbA = VC_COMBINER_ACMUX_0;
-        cycle0->mA = cycle1->mA = VC_COMBINER_ACMUX_1;
-        cycle0->aA = cycle1->aA = VC_COMBINER_ACMUX_0;
+        cycle0->mA = cycle1->mA = VC_COMBINER_ACMUX_0;
+        cycle0->aA = cycle1->aA = VC_COMBINER_ACMUX_1;
         return;
     default:
         cycle0->saA = saAMapping[gDP.combine.saA0];

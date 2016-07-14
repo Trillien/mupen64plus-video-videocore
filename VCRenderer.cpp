@@ -396,7 +396,7 @@ static void VCRenderer_CompileShaderProgram(VCRenderer *renderer,
     VCString fragmentShaderSource = VCString_Create();
     VCString_AppendCString(&fragmentShaderSource, renderer->shaderPreamble);
     VCShaderCompiler_GenerateGLSLFragmentShaderForProgram(&fragmentShaderSource, shaderProgram);
-    // printf("New program:\n%s\n// end\n", fragmentShaderSource.ptr);
+    //printf("New program:\n%s\n// end\n", fragmentShaderSource.ptr);
     VCRenderer_CompileShaderFromCString(&program->program.fragmentShader,
                                         GL_FRAGMENT_SHADER,
                                         fragmentShaderSource.ptr);

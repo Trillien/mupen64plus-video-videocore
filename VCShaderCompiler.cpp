@@ -274,6 +274,7 @@ static uint8_t VCShaderCompiler_GetRGBValue(VCShaderSubprogramContext *context,
         return VC_SHADER_COMPILER_ZERO_VALUE;
     case VC_COMBINER_CCMUX_COMBINED_ALPHA:
         // FIXME(tachi): Support VC_COMBINER_CCMUX_COMBINED_ALPHA!
+        fprintf(stderr, "FIXME: VC_COMBINER_CCMUX_COMBINED_ALPHA! Expect bad colors.\n");
         return VC_SHADER_COMPILER_ONE_VALUE;
     case VC_COMBINER_CCMUX_TEXEL0:
         return VC_SHADER_COMPILER_TEXEL0_VALUE;
@@ -699,29 +700,6 @@ static void VCShaderCompiler_CreateSubprogramForNormalTriangleMode(
     }
 }
 
-static void VCShaderCompiler_CreateSubprogramForTextureRectangleTriangleMode(
-        VCShaderSubprogramSource *source,
-        VCShaderSubprogram *subprogram) {
-    VCUnpackedCombinerFunction cycle0Function;
-    cycle0Function.sa = VC_COMBINER_CCMUX_TEXEL0;
-    cycle0Function.sb = VC_COMBINER_CCMUX_0;
-    cycle0Function.m = VC_COMBINER_CCMUX_1;
-    cycle0Function.a = VC_COMBINER_CCMUX_0;
-    subprogram->rgb = VCShaderCompiler_GenerateFunction(&source->context,
-                                                        VC_SHADER_COMPILER_MODE_RGB,
-                                                        &cycle0Function,
-                                                        NULL);
-
-    cycle0Function.sa = VC_COMBINER_ACMUX_TEXEL0;
-    cycle0Function.sb = VC_COMBINER_ACMUX_0;
-    cycle0Function.m = VC_COMBINER_ACMUX_1;
-    cycle0Function.a = VC_COMBINER_ACMUX_0;
-    subprogram->a = VCShaderCompiler_GenerateFunction(&source->context,
-                                                      VC_SHADER_COMPILER_MODE_ALPHA,
-                                                      &cycle0Function,
-                                                      NULL);
-}
-
 static void VCShaderCompiler_CreateSubprogramForRectFillTriangleMode(
         VCShaderSubprogramSource *source,
         VCShaderSubprogram *subprogram) {
@@ -751,10 +729,8 @@ static VCShaderSubprogram *VCShaderCompiler_CreateSubprogram(VCShaderSubprogramS
 
     switch (source->context.triangleMode) {
     case VC_TRIANGLE_MODE_NORMAL:
-        VCShaderCompiler_CreateSubprogramForNormalTriangleMode(source, subprogram);
-        break;
     case VC_TRIANGLE_MODE_TEXTURE_RECTANGLE:
-        VCShaderCompiler_CreateSubprogramForTextureRectangleTriangleMode(source, subprogram);
+        VCShaderCompiler_CreateSubprogramForNormalTriangleMode(source, subprogram);
         break;
     case VC_TRIANGLE_MODE_RECT_FILL:
         VCShaderCompiler_CreateSubprogramForRectFillTriangleMode(source, subprogram);

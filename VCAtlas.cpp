@@ -408,7 +408,7 @@ void VCAtlas_GetOrUploadTexture(VCAtlas *atlas,
     XXH32_hash_t tmemHash = XXH32_digest(atlas->hashState);
     if (!VCAtlas_LookUpTextureByTMEMHash(atlas, textureInfo, tmemHash)) {
         if (gDP.textureMode == TEXTUREMODE_FRAMEBUFFER) {
-            printf("*** framebuffer image detected! expect corruption.\n");
+            fprintf(stderr, "*** framebuffer image detected! expect corruption.\n");
         }
 
         uint8_t *texturePixels;

@@ -101,6 +101,9 @@ EXPORT void CALL MoveScreen (int xpos, int ypos)
 EXPORT void CALL ProcessDList(void)
 {
     uint32_t beforeProcessTimestamp = SDL_GetTicks();
+    VCRenderer *renderer = VCRenderer_SharedRenderer();
+    VCRenderer_BeginNewFrame(renderer);
+
 	RSP_ProcessDList();
 
     *REG.MI_INTR |= MI_INTR_DP;
@@ -108,11 +111,8 @@ EXPORT void CALL ProcessDList(void)
     *REG.MI_INTR |= MI_INTR_SP;
     CheckInterrupts();
 
-    VCRenderer *renderer = VCRenderer_SharedRenderer();
     VCRenderer_CreateNewShaderProgramsIfNecessary(renderer);
-    VCRenderCommand command = { VC_RENDER_COMMAND_DRAW_BATCHES, 0 };
-    command.elapsedTime = SDL_GetTicks() - beforeProcessTimestamp;
-    VCRenderer_EnqueueCommand(renderer, &command);
+    VCRenderer_SendBatchesToRenderThread(renderer, SDL_GetTicks() - beforeProcessTimestamp);
     VCRenderer_SubmitCommands(renderer);
 }
 

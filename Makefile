@@ -14,13 +14,13 @@ LIBS=
 
 ifeq ($(shell uname -m),armv7l)
 LIBS+=-L/opt/vc/lib -lGLESv2 -lEGL
-CFLAGS+=-DHAVE_OPENGLES2
+CFLAGS+=-DHAVE_OPENGLES2 -pthread
 LDFLAGS+=-Wl,-Bsymbolic
 SO=so
 else
 ifeq ($(shell uname -o),Msys)
 LIBS+=-lglew32 -lopengl32
-LDFLAGS+=-Wl,-Bsymbolic
+LDFLAGS+=-Wl,-Bsymbolic -pthread -mthreads
 SO=dll
 else
 ifeq ($(shell uname),Darwin)

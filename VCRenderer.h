@@ -81,6 +81,8 @@ struct VCRenderCommand {
     uint32_t elapsedTime;
     uint32_t shaderProgramID;
     VCShaderProgram *shaderProgram;
+    VCBatch *batches;
+    size_t batchesLength;
 };
 
 struct VCCompiledShaderProgram {
@@ -106,6 +108,7 @@ struct VCRenderer {
     SDL_mutex *commandsMutex;
     SDL_cond *commandsCond;
 
+    // For use by RSP thread only. The render thread may not touch these!
     VCBatch *batches;
     size_t batchesLength;
     size_t batchesCapacity;
@@ -148,6 +151,8 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
                                      uint8_t mode);
 void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer);
 uint8_t VCRenderer_GetCurrentBlendMode(uint8_t triangleMode);
+void VCRenderer_BeginNewFrame(VCRenderer *renderer);
+void VCRenderer_SendBatchesToRenderThread(VCRenderer *renderer, uint32_t elapsedTime);
 
 #endif
 

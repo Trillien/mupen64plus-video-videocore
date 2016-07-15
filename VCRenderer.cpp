@@ -29,7 +29,6 @@ static VCRenderer SharedRenderer;
 static void VCRenderer_Init(VCRenderer *renderer, SDL_Window *window, SDL_GLContext context);
 static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batchesLength);
 static void VCRenderer_Present(VCRenderer *renderer);
-static void VCRenderer_Reset(VCRenderer *renderer);
 
 static char *VCRenderer_Slurp(const char *path) {
     FILE *f = fopen(path, "rb");
@@ -264,14 +263,6 @@ static void VCRenderer_CreateFBO(VCRenderer *renderer) {
     }
 }
 
-static void VCRenderer_CreateN64VertexStorage(VCRenderer *renderer) {
-    renderer->batches = (VCBatch *)malloc(sizeof(VCBatch) * INITIAL_BATCHES_CAPACITY);
-    if (renderer->batches == NULL)
-        abort();
-    renderer->batchesLength = 0;
-    renderer->batchesCapacity = INITIAL_BATCHES_CAPACITY;
-}
-
 static void VCRenderer_UploadBlitVertices(VCRenderer *renderer) {
     VCRenderer_SetVBOStateForBlitProgram(renderer);
     VCBlitVertex vertices[4] = {
@@ -468,12 +459,6 @@ static int VCRenderer_ThreadMain(void *userData) {
         renderer->commands = NULL;
         renderer->commandsLength = renderer->commandsCapacity = 0;
 
-        VCBatch *batches = renderer->batches;
-        size_t batchesLength = renderer->batchesLength;
-        renderer->batches = (VCBatch *) malloc(sizeof(VCBatch) * INITIAL_BATCHES_CAPACITY);
-        renderer->batchesLength = 0;
-        renderer->batchesCapacity = INITIAL_BATCHES_CAPACITY;
-
         renderer->commandsQueued = false;
 
         SDL_CondSignal(renderer->commandsCond);
@@ -489,7 +474,7 @@ static int VCRenderer_ThreadMain(void *userData) {
                 VCDebugger_AddSample(renderer->debugger,
                                      &renderer->debugger->stats.prepareTime,
                                      command->elapsedTime);
-                VCRenderer_Draw(renderer, batches, batchesLength);
+                VCRenderer_Draw(renderer, command->batches, command->batchesLength);
                 VCRenderer_Present(renderer);
                 break;
             case VC_RENDER_COMMAND_COMPILE_SHADER_PROGRAM:
@@ -529,18 +514,19 @@ void VCRenderer_SubmitCommands(VCRenderer *renderer) {
     while (renderer->commandsQueued)
         SDL_CondWait(renderer->commandsCond, renderer->commandsMutex);
     SDL_UnlockMutex(renderer->commandsMutex);
-
-    VCRenderer_Reset(renderer);
 }
 
 static void VCRenderer_Init(VCRenderer *renderer, SDL_Window *window, SDL_GLContext context) {
     renderer->window = window;
     renderer->context = context;
 
+    renderer->batches = NULL;
+    renderer->batchesLength = 0;
+    renderer->batchesCapacity = 0;
+
     VCRenderer_CompileAndLinkShaders(renderer);
     VCRenderer_CreateVBOs(renderer);
     VCRenderer_CreateFBO(renderer);
-    VCRenderer_CreateN64VertexStorage(renderer);
     VCRenderer_UploadBlitVertices(renderer);
     VCAtlas_Create(&renderer->atlas);
     VCRenderer_SetUniforms(renderer);
@@ -584,10 +570,10 @@ void VCRenderer_Start(VCRenderer *renderer) {
     SDL_UnlockMutex(renderer->readyMutex);
 }
 
-static void VCRenderer_Reset(VCRenderer *renderer) {
-    for (uint32_t batchIndex = 0; batchIndex < renderer->batchesLength; batchIndex++)
-        free(renderer->batches[batchIndex].vertices);
-    renderer->batchesLength = 0;
+static void VCRenderer_DestroyBatches(VCBatch *batches, size_t batchesLength) {
+    for (size_t batchIndex = 0; batchIndex < batchesLength; batchIndex++)
+        free(batches[batchIndex].vertices);
+    free(batches);
 }
 
 static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batchesLength) {
@@ -673,7 +659,6 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
                         GL_DYNAMIC_DRAW));
         GL(glDrawArrays(GL_TRIANGLES, 0, batch->verticesLength));
         totalVertexCount += batch->verticesLength;
-        free(batch->vertices);
     }
 
     uint32_t now = SDL_GetTicks();
@@ -701,6 +686,7 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
         VCDebugger_DrawDebugOverlay(renderer->debugger);
 
     VCDebugger_NewFrame(renderer->debugger);
+    VCRenderer_DestroyBatches(batches, batchesLength);
 }
 
 static void VCRenderer_Present(VCRenderer *renderer) {
@@ -883,5 +869,27 @@ uint8_t VCRenderer_GetCurrentBlendMode(uint8_t triangleMode) {
     }
 
     return VC_BLEND_MODE_DISABLED;
+}
+
+void VCRenderer_BeginNewFrame(VCRenderer *renderer) {
+    free(renderer->batches);
+
+    renderer->batches = (VCBatch *)malloc(sizeof(VCBatch) * INITIAL_BATCHES_CAPACITY);
+    if (renderer->batches == NULL)
+        abort();
+    renderer->batchesLength = 0;
+    renderer->batchesCapacity = INITIAL_BATCHES_CAPACITY;
+}
+
+void VCRenderer_SendBatchesToRenderThread(VCRenderer *renderer, uint32_t elapsedTime) {
+    VCRenderCommand command = { 0 };
+    command.command = VC_RENDER_COMMAND_DRAW_BATCHES;
+    command.elapsedTime = elapsedTime;
+    command.batches = renderer->batches;
+    command.batchesLength = renderer->batchesLength;
+    renderer->batches = NULL;
+    renderer->batchesLength = 0;
+    renderer->batchesCapacity = 0;
+    VCRenderer_EnqueueCommand(renderer, &command);
 }
 

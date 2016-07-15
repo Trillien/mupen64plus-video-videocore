@@ -309,6 +309,7 @@ static bool VCRenderer_CanAddToCurrentBatch(VCRenderer *renderer, VCBlendFlags *
     VCBatch *batch = &renderer->batches[renderer->batchesLength - 1];
     return batch->blendFlags.zTest == blendFlags->zTest &&
         batch->blendFlags.zUpdate == blendFlags->zUpdate &&
+        batch->blendFlags.zOffset == blendFlags->zOffset &&
         batch->blendFlags.cullFront == blendFlags->cullFront &&
         batch->blendFlags.cullBack == blendFlags->cullBack &&
         batch->blendFlags.blendMode == blendFlags->blendMode &&
@@ -607,6 +608,7 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
     GL(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT));
     GL(glDisable(GL_SCISSOR_TEST));
     GL(glEnable(GL_DEPTH_TEST));
+    GL(glPolygonOffset(-3.0f, -3.0f));
 
     GL(glActiveTexture(GL_TEXTURE0));
     VCAtlas_Bind(&renderer->atlas);
@@ -635,6 +637,11 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
         } else {
             GL(glDisable(GL_CULL_FACE));
         }
+
+        if (batch->blendFlags.zOffset)
+            GL(glEnable(GL_POLYGON_OFFSET_FILL));
+        else
+            GL(glDisable(GL_POLYGON_OFFSET_FILL));
 
         if (batch->blendFlags.blendMode == VC_BLEND_MODE_DISABLED) {
             GL(glDisable(GL_BLEND));
@@ -725,9 +732,6 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
         n64Vertex->position.y = spVertex->y;
         n64Vertex->position.z = spVertex->z;
         n64Vertex->position.w = spVertex->w;
-
-        if (gDP.otherMode.depthMode == ZMODE_DEC)
-            n64Vertex->position.z -= 0.5;
 
         n64Vertex->textureUV.x = spVertex->s;
         n64Vertex->textureUV.y = spVertex->t;

@@ -39,6 +39,7 @@ struct VCShaderProgramDescriptorLibrary;
 struct VCBlendFlags {
     bool zTest;
     bool zUpdate;
+    bool zOffset;
     bool cullFront;
     bool cullBack;
     uint8_t blendMode;

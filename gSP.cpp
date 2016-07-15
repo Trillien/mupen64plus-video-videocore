@@ -811,7 +811,6 @@ void gSPTriangle( s32 v0, s32 v1, s32 v2, s32 flag )
         VCBlendFlags blendFlags = {
             gDP.otherMode.depthCompare != 0,
             gDP.otherMode.depthUpdate != 0,
-            gDP.otherMode.depthMode == ZMODE_DEC,
             (gSP.geometryMode & G_CULL_FRONT) != 0,
             (gSP.geometryMode & G_CULL_BACK) != 0,
             VCRenderer_GetCurrentBlendMode(VC_TRIANGLE_MODE_NORMAL),

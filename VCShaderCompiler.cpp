@@ -879,16 +879,24 @@ void VCShaderCompiler_GenerateGLSLFragmentShaderForProgram(VCString *shaderSourc
          subprogramIndex < program->subprogramCount;
          subprogramIndex++) {
         VCShaderSubprogram *subprogram = program->subprograms[subprogramIndex];
+
+        // Add a fudge factor of 0.1 in each direction because the VideoCore IV sometimes adds some
+        // error (due to perspective correction, presumably) to varyings for polygons close to the
+        // camera.
         if (subprogramIndex == 0) {
-            VCString_AppendCString(shaderSource, "    if (vSubprogram == 0.0) {\n");
+            VCString_AppendCString(shaderSource, "    if (vSubprogram < 0.1) {\n");
         } else {
             VCString_AppendFormat(shaderSource,
-                                  "    } else if (vSubprogram == %d.0) {\n",
+                                  "    } else if (vSubprogram > %d.9 && vSubprogram < %d.1) {\n",
+                                  (int)(subprogramIndex - 1),
                                   (int)subprogramIndex);
         }
         VCShaderCompiler_GenerateGLSLForFunction(shaderSource, &subprogram->rgb, "fragRGB");
         VCShaderCompiler_GenerateGLSLForFunction(shaderSource, &subprogram->a, "fragA");
     }
+    VCString_AppendCString(shaderSource, "    } else {\n");
+    VCString_AppendCString(shaderSource, "        fragRGB = vec4(1.0, 0.0, 0.0, 1.0);\n");
+    VCString_AppendCString(shaderSource, "        fragA = vec4(1.0);\n");
     VCString_AppendCString(shaderSource, "    }\n");
     VCString_AppendCString(shaderSource, "    if (fragA.a < uAlphaThreshold)\n");
     VCString_AppendCString(shaderSource, "        discard;\n");

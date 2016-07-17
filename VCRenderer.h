@@ -39,10 +39,7 @@ struct VCShaderProgramDescriptorLibrary;
 struct VCBlendFlags {
     bool zTest;
     bool zUpdate;
-    bool cullFront;
-    bool cullBack;
     uint8_t blendMode;
-    float alphaThreshold;
     VCRectf viewport;
 };
 
@@ -54,7 +51,8 @@ struct VCN64Vertex {
     VCColor shade;
     VCColor primitive;
     VCColor environment;
-    uint16_t subprogram;
+    uint8_t subprogram;
+    uint8_t alphaThreshold;
 };
 
 struct VCBlitVertex {
@@ -87,7 +85,6 @@ struct VCRenderCommand {
 
 struct VCCompiledShaderProgram {
     VCProgram program;
-    GLint uAlphaThreshold;
 };
 
 struct VCRenderer {
@@ -140,7 +137,8 @@ void VCRenderer_CompileShader(GLuint *shader, GLint shaderType, const char *path
 void VCRenderer_AddVertex(VCRenderer *renderer,
                           VCN64Vertex *vertex,
                           VCBlendFlags *blendFlags,
-                          uint8_t mode);
+                          uint8_t mode,
+                          float alphaThreshold);
 void VCRenderer_EnqueueCommand(VCRenderer *renderer, VCRenderCommand *command);
 void VCRenderer_SubmitCommands(VCRenderer *renderer);
 void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
@@ -153,6 +151,7 @@ void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer);
 uint8_t VCRenderer_GetCurrentBlendMode(uint8_t triangleMode);
 void VCRenderer_BeginNewFrame(VCRenderer *renderer);
 void VCRenderer_SendBatchesToRenderThread(VCRenderer *renderer, uint32_t elapsedTime);
+bool VCRenderer_ShouldCull(VCN64Vertex *triangleVertices, bool cullFront, bool cullBack);
 
 #endif
 

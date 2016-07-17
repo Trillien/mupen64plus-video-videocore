@@ -199,8 +199,8 @@ static void VCRenderer_SetVBOStateForN64Program(VCRenderer *renderer) {
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, environment)));
     GL(glVertexAttribPointer(7,
-                             1,
-                             GL_UNSIGNED_SHORT,
+                             2,
+                             GL_UNSIGNED_BYTE,
                              GL_FALSE,
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, subprogram)));
@@ -294,26 +294,43 @@ static void VCRenderer_AddNewBatch(VCRenderer *renderer, VCBlendFlags *blendFlag
     batch->programIDPresent = false;
 }
 
+static bool VCRenderer_CheckBlendFlagEquality(bool test, const char *name) {
+#if 0
+    if (!test)
+        fprintf(stderr, "batch break: %s\n", name);
+#endif
+    return test;
+}
+
 static bool VCRenderer_CanAddToCurrentBatch(VCRenderer *renderer, VCBlendFlags *blendFlags) {
     if (renderer->batchesLength == 0)
         return false;
     VCBatch *batch = &renderer->batches[renderer->batchesLength - 1];
-    return batch->blendFlags.zTest == blendFlags->zTest &&
-        batch->blendFlags.zUpdate == blendFlags->zUpdate &&
-        batch->blendFlags.cullFront == blendFlags->cullFront &&
-        batch->blendFlags.cullBack == blendFlags->cullBack &&
-        batch->blendFlags.blendMode == blendFlags->blendMode &&
-        batch->blendFlags.alphaThreshold == blendFlags->alphaThreshold &&
-        batch->blendFlags.viewport.origin.x == blendFlags->viewport.origin.x &&
-        batch->blendFlags.viewport.origin.y == blendFlags->viewport.origin.y &&
-        batch->blendFlags.viewport.size.width == blendFlags->viewport.size.width &&
-        batch->blendFlags.viewport.size.height == blendFlags->viewport.size.height;
+    return VCRenderer_CheckBlendFlagEquality(batch->blendFlags.zTest == blendFlags->zTest,
+                                             "zTest") &&
+        VCRenderer_CheckBlendFlagEquality(batch->blendFlags.zUpdate == blendFlags->zUpdate,
+                                          "zUpdate") &&
+        VCRenderer_CheckBlendFlagEquality(batch->blendFlags.blendMode == blendFlags->blendMode,
+                                          "blendMode") &&
+        VCRenderer_CheckBlendFlagEquality(batch->blendFlags.viewport.origin.x ==
+                                          blendFlags->viewport.origin.x,
+                                          "viewport.origin.x") &&
+        VCRenderer_CheckBlendFlagEquality(batch->blendFlags.viewport.origin.y ==
+                                          blendFlags->viewport.origin.y,
+                                          "viewport.origin.y") &&
+        VCRenderer_CheckBlendFlagEquality(batch->blendFlags.viewport.size.width ==
+                                          blendFlags->viewport.size.width,
+                                          "viewport.size.width") &&
+        VCRenderer_CheckBlendFlagEquality(batch->blendFlags.viewport.size.height ==
+                                          blendFlags->viewport.size.height,
+                                          "viewport.size.height");
 }
 
 void VCRenderer_AddVertex(VCRenderer *renderer,
                           VCN64Vertex *vertex,
                           VCBlendFlags *blendFlags,
-                          uint8_t mode) {
+                          uint8_t mode,
+                          float alphaThreshold) {
     if (!VCRenderer_CanAddToCurrentBatch(renderer, blendFlags))
         VCRenderer_AddNewBatch(renderer, blendFlags);
 
@@ -338,6 +355,7 @@ void VCRenderer_AddVertex(VCRenderer *renderer,
     assert(!batch->programIDPresent);
     vertex->subprogram = VCShaderCompiler_GetOrCreateSubprogramID(&batch->program.table,
                                                                   &subprogramSignature);
+    vertex->alphaThreshold = (uint8_t)roundf(alphaThreshold * 255.0);
 
     if (batch->verticesLength >= batch->verticesCapacity) {
         batch->verticesCapacity *= 2;
@@ -376,7 +394,6 @@ static void VCRenderer_CompileShaderProgram(VCRenderer *renderer,
         renderer->shaderPrograms[i].program.vertexShader = 0;
         renderer->shaderPrograms[i].program.fragmentShader = 0;
         renderer->shaderPrograms[i].program.program = 0;
-        renderer->shaderPrograms[i].uAlphaThreshold = 0;
     }
 
     VCCompiledShaderProgram *program = &renderer->shaderPrograms[shaderProgramID];
@@ -403,13 +420,12 @@ static void VCRenderer_CompileShaderProgram(VCRenderer *renderer,
     GL(glBindAttribLocation(program->program.program, 4, "aShade"));
     GL(glBindAttribLocation(program->program.program, 5, "aPrimitive"));
     GL(glBindAttribLocation(program->program.program, 6, "aEnvironment"));
-    GL(glBindAttribLocation(program->program.program, 7, "aSubprogram"));
+    GL(glBindAttribLocation(program->program.program, 7, "aSubprogramAlphaThreshold"));
     GL(glLinkProgram(program->program.program));
     GL(glUseProgram(program->program.program));
 
     GLint uTexture = glGetUniformLocation(program->program.program, "uTexture");
     GL(glUniform1i(uTexture, 0));
-    program->uAlphaThreshold = glGetUniformLocation(program->program.program, "uAlphaThreshold");
 
     VCDebugger_IncrementSample(renderer->debugger, &renderer->debugger->stats.programsCreated);
 }
@@ -419,7 +435,6 @@ static void VCRenderer_DestroyShaderProgram(VCRenderer *renderer, uint32_t shade
     assert(shaderProgramID < renderer->shaderProgramsCapacity);
     VCCompiledShaderProgram *program = &renderer->shaderPrograms[shaderProgramID];
     VCRenderer_DestroyProgram(&program->program);
-    program->uAlphaThreshold = 0;
 }
 
 static int VCRenderer_ThreadMain(void *userData) {
@@ -608,20 +623,6 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
         GL(glDepthMask(batch->blendFlags.zUpdate ? GL_TRUE : GL_FALSE));
         GL(glDepthFunc(batch->blendFlags.zTest ? GL_LEQUAL : GL_ALWAYS));
 
-        if (batch->blendFlags.cullFront || batch->blendFlags.cullBack) {
-            GLenum cullMode;
-            if (batch->blendFlags.cullFront && batch->blendFlags.cullBack)
-                cullMode = GL_FRONT_AND_BACK;
-            else if (batch->blendFlags.cullFront)
-                cullMode = GL_FRONT;
-            else if (batch->blendFlags.cullBack)
-                cullMode = GL_BACK;
-            GL(glCullFace(cullMode));
-            GL(glEnable(GL_CULL_FACE));
-        } else {
-            GL(glDisable(GL_CULL_FACE));
-        }
-
         if (batch->blendFlags.blendMode == VC_BLEND_MODE_DISABLED) {
             GL(glDisable(GL_BLEND));
         } else {
@@ -643,8 +644,6 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
                 assert(0 && "Unknown blend mode!");
             }
         }
-
-        GL(glUniform1f(program->uAlphaThreshold, batch->blendFlags.alphaThreshold));
 
         GL(glViewport(batch->blendFlags.viewport.origin.x,
                       VC_N64_HEIGHT - (batch->blendFlags.viewport.origin.y +
@@ -670,9 +669,13 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
     VCDebugger_AddSample(renderer->debugger, &renderer->debugger->stats.drawTime, elapsedDrawTime);
     VCDebugger_AddSample(renderer->debugger, &renderer->debugger->stats.viRate, now);
 
+    // Calculate aspect ratio.
+    GLint viewportWidth = renderer->windowSize.height * 4 / 3;
+    GLint viewportX = (renderer->windowSize.width - viewportWidth) / 2;
+
     // Blit to the screen.
     GL(glBindFramebuffer(GL_FRAMEBUFFER, 0));
-    GL(glViewport(0, 0, renderer->windowSize.width, renderer->windowSize.height));
+    GL(glViewport(viewportX, 0, viewportWidth, renderer->windowSize.height));
     GL(glUseProgram(renderer->blitProgram.program));
     VCRenderer_SetVBOStateForBlitProgram(renderer);
     GL(glDisable(GL_DEPTH_TEST));
@@ -891,5 +894,27 @@ void VCRenderer_SendBatchesToRenderThread(VCRenderer *renderer, uint32_t elapsed
     renderer->batchesLength = 0;
     renderer->batchesCapacity = 0;
     VCRenderer_EnqueueCommand(renderer, &command);
+}
+
+bool VCRenderer_ShouldCull(VCN64Vertex *triangleVertices, bool cullFront, bool cullBack) {
+    VCPoint4f *a = &triangleVertices[0].position;
+    VCPoint4f *b = &triangleVertices[1].position;
+    VCPoint4f *c = &triangleVertices[2].position;
+    if (a->w < 0.0 || b->w < 0.0 || c->w < 0.0) {
+        // FIXME(tachi): Crosses Z-plane. Assume this isn't culled for now. To be correct, we
+        // should clip and try again.
+        return false;
+    }
+
+    VCPoint3f a3 = VCPoint4f_To3f(a);
+    VCPoint3f b3 = VCPoint4f_To3f(b);
+    VCPoint3f c3 = VCPoint4f_To3f(c);
+    a3 = VCPoint3f_ScalarDiv(&a3, a->w);
+    b3 = VCPoint3f_ScalarDiv(&b3, b->w);
+    c3 = VCPoint3f_ScalarDiv(&c3, c->w);
+    VCPoint3f ba = VCPoint3f_Sub(&b3, &a3);
+    VCPoint3f ca = VCPoint3f_Sub(&c3, &a3);
+    VCPoint3f cross = VCPoint3f_Cross(&ba, &ca);
+    return (cross.z > 0.0 && cullFront) || (cross.z < 0.0 && cullBack);
 }
 

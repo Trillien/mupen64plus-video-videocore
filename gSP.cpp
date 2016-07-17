@@ -802,27 +802,40 @@ void gSPTriangle( s32 v0, s32 v1, s32 v2, s32 flag )
                                         3,
                                         VC_TRIANGLE_MODE_NORMAL);
 
-        float alphaThreshold;
-        if (gDP.otherMode.alphaCompare == G_AC_THRESHOLD && !gDP.otherMode.alphaCvgSel)
-            alphaThreshold = fmaxf(gDP.blendColor.a, 1.0f / 255.0f);
-        else
-            alphaThreshold = gDP.otherMode.cvgXAlpha ? 0.5f : 0.0f;
+        if (!VCRenderer_ShouldCull(n64Vertices,
+                                   (gSP.geometryMode & G_CULL_FRONT) != 0,
+                                   (gSP.geometryMode & G_CULL_BACK) != 0)) {
+            float alphaThreshold;
+            if (gDP.otherMode.alphaCompare == G_AC_THRESHOLD && !gDP.otherMode.alphaCvgSel)
+                alphaThreshold = fmaxf(gDP.blendColor.a, 1.0f / 255.0f);
+            else
+                alphaThreshold = gDP.otherMode.cvgXAlpha ? 0.5f : 0.0f;
 
-        VCBlendFlags blendFlags = {
-            gDP.otherMode.depthCompare != 0,
-            gDP.otherMode.depthUpdate != 0,
-            (gSP.geometryMode & G_CULL_FRONT) != 0,
-            (gSP.geometryMode & G_CULL_BACK) != 0,
-            VCRenderer_GetCurrentBlendMode(VC_TRIANGLE_MODE_NORMAL),
-            alphaThreshold,
-            {
-                { gSP.viewport.x, gSP.viewport.y },
-                { gSP.viewport.width, gSP.viewport.height }
-            }
-        };
-        VCRenderer_AddVertex(renderer, &n64Vertices[0], &blendFlags, VC_TRIANGLE_MODE_NORMAL);
-        VCRenderer_AddVertex(renderer, &n64Vertices[1], &blendFlags, VC_TRIANGLE_MODE_NORMAL);
-        VCRenderer_AddVertex(renderer, &n64Vertices[2], &blendFlags, VC_TRIANGLE_MODE_NORMAL);
+            VCBlendFlags blendFlags = {
+                gDP.otherMode.depthCompare != 0,
+                gDP.otherMode.depthUpdate != 0,
+                VCRenderer_GetCurrentBlendMode(VC_TRIANGLE_MODE_NORMAL),
+                {
+                    { gSP.viewport.x, gSP.viewport.y },
+                    { gSP.viewport.width, gSP.viewport.height }
+                }
+            };
+            VCRenderer_AddVertex(renderer,
+                                 &n64Vertices[0],
+                                 &blendFlags,
+                                 VC_TRIANGLE_MODE_NORMAL,
+                                 alphaThreshold);
+            VCRenderer_AddVertex(renderer,
+                                 &n64Vertices[1],
+                                 &blendFlags,
+                                 VC_TRIANGLE_MODE_NORMAL,
+                                 alphaThreshold);
+            VCRenderer_AddVertex(renderer,
+                                 &n64Vertices[2],
+                                 &blendFlags,
+                                 VC_TRIANGLE_MODE_NORMAL,
+                                 alphaThreshold);
+        }
 	}
 #ifdef DEBUG
 	else

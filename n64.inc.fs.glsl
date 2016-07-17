@@ -2,7 +2,6 @@
 
 uniform sampler2D uTexture0;
 uniform sampler2D uTexture1;
-uniform float uAlphaThreshold;
 
 varying vec2 vTextureUv;
 varying vec4 vTexture0Bounds;
@@ -10,7 +9,7 @@ varying vec4 vTexture1Bounds;
 varying vec4 vShade;
 varying vec4 vPrimitive;
 varying vec4 vEnvironment;
-varying float vSubprogram;
+varying vec2 vSubprogramAlphaThreshold;
 
 vec2 AtlasUv(vec4 textureBounds) {
     vec2 uv = vTextureUv;

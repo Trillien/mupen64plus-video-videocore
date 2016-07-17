@@ -150,9 +150,13 @@ static void VCAtlas_Upload(VCAtlas *atlas,
     VCUploadedTexture *uploadedTexture = (VCUploadedTexture *)malloc(sizeof(VCUploadedTexture));
 
     VCSize2us mirrorFactors = { (uint16_t)(mirrorX ? 2 : 1), (uint16_t)(mirrorY ? 2 : 1) };
+    VCSize2us sizeIncludingMirror = {
+        (uint16_t)(size->width * mirrorFactors.width),
+        (uint16_t)(size->height * mirrorFactors.height)
+    };
     VCSize2us sizeIncludingBorder = {
-        (uint16_t)(size->width * mirrorFactors.width + 2),
-        (uint16_t)(size->height * mirrorFactors.height + 2)
+        (uint16_t)(sizeIncludingMirror.width + 2),
+        (uint16_t)(sizeIncludingMirror.height + 2)
     };
     VCRectus uvIncludingBorder;
     if (!VCAtlas_Allocate(atlas, &uvIncludingBorder, &sizeIncludingBorder)) {
@@ -200,33 +204,44 @@ static void VCAtlas_Upload(VCAtlas *atlas,
                &pixels[y * stride],
                4);
         if (repeatX) {
-            memcpy(&pixelsWithBorder[(y + 1) * strideWithBorder + (size->width + 1) * 4],
+            memcpy(&pixelsWithBorder[(y + 1) * strideWithBorder +
+                                     (sizeIncludingMirror.width + 1) * 4],
                    &pixels[y * stride],
                    4);
         } else {
-            memcpy(&pixelsWithBorder[(y + 1) * strideWithBorder + (size->width + 1) * 4],
-                   &pixels[y * stride + (size->width - 1) * 4],
+            memcpy(&pixelsWithBorder[(y + 1) * strideWithBorder +
+                                     (sizeIncludingMirror.width + 1) * 4],
+                   &pixels[y * stride + (sizeIncludingMirror.width - 1) * 4],
                    4);
         }
     }
 
-    // TODO: Mirror Y.
+    // Replicate Y if necessary.
+    if (mirrorY) {
+        for (uint32_t y = 0; y < size->height; y++) {
+            memcpy(&pixelsWithBorder[(sizeIncludingMirror.height - 1 - y + 1) * strideWithBorder],
+                   &pixelsWithBorder[(y + 1) * strideWithBorder],
+                   strideWithBorder);
+        }
+    }
 
     // See above: replicate the strange bilerp quirk.
     memcpy(&pixelsWithBorder[4], &pixels[0], stride);
     if (repeatY) {
-        memcpy(&pixelsWithBorder[(size->height + 1) * strideWithBorder + 4], &pixels[0], stride);
+        memcpy(&pixelsWithBorder[(sizeIncludingMirror.height + 1) * strideWithBorder + 4],
+               &pixels[0],
+               stride);
     } else {
-        memcpy(&pixelsWithBorder[(size->height + 1) * strideWithBorder + 4],
-               &pixels[(size->height - 1) * stride],
+        memcpy(&pixelsWithBorder[(sizeIncludingMirror.height + 1) * strideWithBorder + 4],
+               &pixels[(sizeIncludingMirror.height - 1) * stride],
                stride);
     }
 
     // Zero out corners.
     memset(&pixelsWithBorder[0], '\0', 4);
     memset(&pixelsWithBorder[strideWithBorder - 4], '\0', 4);
-    memset(&pixelsWithBorder[(size->height + 1) * strideWithBorder], '\0', 4);
-    memset(&pixelsWithBorder[(size->height + 2) * strideWithBorder - 4], '\0', 4);
+    memset(&pixelsWithBorder[(sizeIncludingMirror.height + 1) * strideWithBorder], '\0', 4);
+    memset(&pixelsWithBorder[(sizeIncludingMirror.height + 2) * strideWithBorder - 4], '\0', 4);
 
     command->command = VC_RENDER_COMMAND_UPLOAD_TEXTURE;
     command->uv = uvIncludingBorder;

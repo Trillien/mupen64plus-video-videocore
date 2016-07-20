@@ -453,6 +453,8 @@ static int VCRenderer_ThreadMain(void *userData) {
                                           flags);
     SDL_GLContext context = SDL_GL_CreateContext(screen);
 
+    SDL_ShowCursor(SDL_DISABLE);
+
 #if !defined(HAVE_OPENGLES2) && !defined(__APPLE__)
     int glewError = glewInit();
     if (glewError != GLEW_OK) {

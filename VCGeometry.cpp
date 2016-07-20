@@ -2,9 +2,13 @@
 //
 // Copyright (c) 2016 The mupen64plus-video-videocore Authors
 
+#include <assert.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include "VCGeometry.h"
+
+#define W_CLIP_PLANE    0.00001
 
 VCColor VCColor_ColorFToColor(VCColorf colorf) {
     VCColor color = {
@@ -34,21 +38,25 @@ VCPoint3f VCPoint3f_Sub(const VCPoint3f *a, const VCPoint3f *b) {
     return c;
 }
 
-VCPoint3f VCPoint3f_ScalarDiv(const VCPoint3f *a, float b) {
+VCPoint3f VCPoint3f_Neg(const VCPoint3f *a) {
     VCPoint3f c = {
-        a->x / b,
-        a->y / b,
-        a->z / b
+        -a->x,
+        -a->y,
+        -a->z
     };
     return c;
-} 
+}
 
-VCPoint3f VCPoint4f_To3f(const VCPoint4f *a) {
+float VCPoint3f_Dot(const VCPoint3f *a, const VCPoint3f *b) {
+    return a->x * b->x + a->y * b->y + a->z * b->z;
+}
+
+VCPoint3f VCPoint4f_Dehomogenize(const VCPoint4f *a) {
     VCPoint3f b = {
         a->x,
         a->y,
-        a->z
+        a->w
     };
     return b;
-} 
+}
 

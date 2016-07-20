@@ -112,8 +112,9 @@ struct VCColorf {
 VCColor VCColor_ColorFToColor(VCColorf colorf);
 VCPoint3f VCPoint3f_Cross(const VCPoint3f *a, const VCPoint3f *b);
 VCPoint3f VCPoint3f_Sub(const VCPoint3f *a, const VCPoint3f *b);
-VCPoint3f VCPoint4f_To3f(const VCPoint4f *a);
-VCPoint3f VCPoint3f_ScalarDiv(const VCPoint3f *a, float b);
+VCPoint3f VCPoint4f_Dehomogenize(const VCPoint4f *a);
+VCPoint3f VCPoint3f_Neg(const VCPoint3f *a);
+float VCPoint3f_Dot(const VCPoint3f *a, const VCPoint3f *b);
 
 #endif
 

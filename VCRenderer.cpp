@@ -897,24 +897,17 @@ void VCRenderer_SendBatchesToRenderThread(VCRenderer *renderer, uint32_t elapsed
 }
 
 bool VCRenderer_ShouldCull(VCN64Vertex *triangleVertices, bool cullFront, bool cullBack) {
-    VCPoint4f *a = &triangleVertices[0].position;
-    VCPoint4f *b = &triangleVertices[1].position;
-    VCPoint4f *c = &triangleVertices[2].position;
-    if (a->w < 0.0 || b->w < 0.0 || c->w < 0.0) {
-        // FIXME(tachi): Crosses Z-plane. Assume this isn't culled for now. To be correct, we
-        // should clip and try again.
-        return false;
-    }
-
-    VCPoint3f a3 = VCPoint4f_To3f(a);
-    VCPoint3f b3 = VCPoint4f_To3f(b);
-    VCPoint3f c3 = VCPoint4f_To3f(c);
-    a3 = VCPoint3f_ScalarDiv(&a3, a->w);
-    b3 = VCPoint3f_ScalarDiv(&b3, b->w);
-    c3 = VCPoint3f_ScalarDiv(&c3, c->w);
+    VCPoint4f a = triangleVertices[0].position;
+    VCPoint4f b = triangleVertices[1].position;
+    VCPoint4f c = triangleVertices[2].position;
+    VCPoint3f a3 = VCPoint4f_Dehomogenize(&a);
+    VCPoint3f b3 = VCPoint4f_Dehomogenize(&b);
+    VCPoint3f c3 = VCPoint4f_Dehomogenize(&c);
     VCPoint3f ba = VCPoint3f_Sub(&b3, &a3);
     VCPoint3f ca = VCPoint3f_Sub(&c3, &a3);
     VCPoint3f cross = VCPoint3f_Cross(&ba, &ca);
-    return (cross.z > 0.0 && cullFront) || (cross.z < 0.0 && cullBack);
+    VCPoint3f ap = VCPoint3f_Neg(&a3);
+    float dot = VCPoint3f_Dot(&ap, &cross);
+    return (dot < 0.0 && cullFront) || (dot > 0.0 && cullBack);
 }
 

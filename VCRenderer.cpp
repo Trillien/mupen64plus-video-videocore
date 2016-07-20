@@ -688,7 +688,7 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
 
     // Draw the debug overlay, if requested.
     if (VCConfig_SharedConfig()->debugDisplay)
-        VCDebugger_DrawDebugOverlay(renderer->debugger);
+        VCDebugger_DrawDebugOverlay(renderer->debugger, &renderer->windowSize);
 
     VCDebugger_NewFrame(renderer->debugger);
     VCRenderer_DestroyBatches(batches, batchesLength);

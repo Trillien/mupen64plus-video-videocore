@@ -414,7 +414,9 @@ static uint32_t VCDebugger_MovingAverageOfVIPerSecond(VCDebugger *debugger) {
     return samples * 1000 / elapsed;
 }
 
-void VCDebugger_DrawDebugOverlay(VCDebugger *debugger) {
+void VCDebugger_DrawDebugOverlay(VCDebugger *debugger, const VCSize2u *windowSize) {
+    GL(glViewport(0, 0, windowSize->width, windowSize->height));
+
     VCConfig *config = VCConfig_SharedConfig();
     VCPoint2i position = {
         (HORIZONTAL_MARGIN + TAB_STOP) * SCALE,

@@ -18,8 +18,10 @@
 #include "gDP.h"
 #include "gSP.h"
 
+#define BYTES_PER_PIXEL                     4
 #define HASH_SEED                           0xdeadbeef
 #define INITIAL_STORED_TEXTURES_CAPACITY    16
+#define MAX_TEXTURE_BYTES_USED              (4 * 1024 * 1024)
 
 #define S8  3
 #define S16 1
@@ -33,7 +35,11 @@ static void VCAtlas_InitFreeList(VCAtlas *atlas) {
 }
 
 void VCAtlas_Create(VCAtlas *atlas) {
-    atlas->uploadedTextures = NULL;
+    atlas->cachedTextures = NULL;
+    for (uint32_t i = 0; i < VC_ATLAS_TILE_COUNT; i++)
+        atlas->cachedTileTextures[i] = NULL;
+
+    atlas->textureBytesUsed = 0;
 
     VCAtlas_InitFreeList(atlas);
 
@@ -42,12 +48,12 @@ void VCAtlas_Create(VCAtlas *atlas) {
     GL(glGenTextures(1, &atlas->texture));
     GL(glActiveTexture(GL_TEXTURE0));
     GL(glBindTexture(GL_TEXTURE_2D, atlas->texture));
-    char *pixels = (char *)malloc(VC_ATLAS_TEXTURE_SIZE * VC_ATLAS_TEXTURE_SIZE * 4);
+    char *pixels = (char *)malloc(VC_ATLAS_TEXTURE_SIZE * VC_ATLAS_TEXTURE_SIZE * BYTES_PER_PIXEL);
     for (int i = 0; i < VC_ATLAS_TEXTURE_SIZE * VC_ATLAS_TEXTURE_SIZE; i++) {
-        pixels[i * 4 + 0] = 0xff;
-        pixels[i * 4 + 1] = 0xff;
-        pixels[i * 4 + 2] = 0xff;
-        pixels[i * 4 + 3] = 0xff;
+        pixels[i * BYTES_PER_PIXEL + 0] = 0xff;
+        pixels[i * BYTES_PER_PIXEL + 1] = 0xff;
+        pixels[i * BYTES_PER_PIXEL + 2] = 0xff;
+        pixels[i * BYTES_PER_PIXEL + 3] = 0xff;
     }
     GL(glTexImage2D(GL_TEXTURE_2D,
                     0,
@@ -65,7 +71,7 @@ void VCAtlas_Create(VCAtlas *atlas) {
     GL(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
 }
 
-bool VCAtlas_Allocate(VCAtlas *atlas, VCRectus *result, VCSize2us *size) {
+bool VCAtlas_Allocate(VCAtlas *atlas, VCPoint2us *result, VCSize2us *size) {
     if (atlas->freeListSize == 0)
         return false;
 
@@ -86,8 +92,7 @@ bool VCAtlas_Allocate(VCAtlas *atlas, VCRectus *result, VCSize2us *size) {
         return false;
 
     VCRectus chosenRect = atlas->freeList[bestIndex];
-    result->origin = chosenRect.origin;
-    result->size = *size;
+    *result = chosenRect.origin;
 
     // Guillotine to right.
     atlas->freeList[bestIndex].origin.x = chosenRect.origin.x + size->width;
@@ -110,44 +115,112 @@ bool VCAtlas_Allocate(VCAtlas *atlas, VCRectus *result, VCSize2us *size) {
     return true;
 }
 
-static bool VCAtlas_LookUpTextureByTMEMHash(VCAtlas *atlas,
-                                            VCTextureInfo *info,
-                                            XXH32_hash_t tmemHash) {
-    VCUploadedTexture *uploadedTexture = NULL;
-    HASH_FIND_INT(atlas->uploadedTextures, &tmemHash, uploadedTexture);
-    if (uploadedTexture == NULL)
-        return false;
+static VCCachedTexture *VCAtlas_LookUpTextureByTMEMHash(VCAtlas *atlas, XXH32_hash_t tmemHash) {
+    VCCachedTexture *cachedTexture = NULL;
+    HASH_FIND_INT(atlas->cachedTextures, &tmemHash, cachedTexture);
+    if (cachedTexture == NULL)
+        return NULL;
     
     // Move the item to the end of the list to maintain LRU sorting.
-    HASH_DEL(atlas->uploadedTextures, uploadedTexture);
-    HASH_ADD_INT(atlas->uploadedTextures, tmemHash, uploadedTexture);
-
-    *info = uploadedTexture->info;
-    return true;
+    HASH_DEL(atlas->cachedTextures, cachedTexture);
+    HASH_ADD_INT(atlas->cachedTextures, tmemHash, cachedTexture);
+    return cachedTexture;
 }
 
+#if 0
 static void VCAtlas_Clear(VCAtlas *atlas) {
-    VCUploadedTexture *currentUploadedTexture, *temp_allocated_texture;
-    HASH_ITER(hh, atlas->uploadedTextures, currentUploadedTexture, temp_allocated_texture) {
-        HASH_DEL(atlas->uploadedTextures, currentUploadedTexture);
-        free(currentUploadedTexture);
+    VCCachedTexture *currentCachedTexture, *temp_allocated_texture;
+    HASH_ITER(hh, atlas->cachedTextures, currentCachedTexture, temp_allocated_texture) {
+        HASH_DEL(atlas->cachedTextures, currentCachedTexture);
+        free(currentCachedTexture);
+    }
+
+    free(atlas->freeList);
+    VCAtlas_InitFreeList(atlas);
+}
+#endif
+
+static void VCAtlas_ClearAtlasTexture(VCAtlas *atlas) {
+    VCCachedTexture *cachedTexture = NULL, *tempCachedTexture = NULL;
+    HASH_ITER(hh, atlas->cachedTextures, cachedTexture, tempCachedTexture) {
+        cachedTexture->info.uvValid = false;
     }
 
     free(atlas->freeList);
     VCAtlas_InitFreeList(atlas);
 }
 
-static void VCAtlas_Upload(VCAtlas *atlas,
-                           VCRenderCommand *command,
-                           VCTextureInfo *info,
-                           VCSize2us *size,
-                           XXH32_hash_t tmemHash,
-                           uint8_t *pixels,
-                           bool repeatX,
-                           bool repeatY,
-                           bool mirrorX,
-                           bool mirrorY) {
-    VCUploadedTexture *uploadedTexture = (VCUploadedTexture *)malloc(sizeof(VCUploadedTexture));
+void VCAtlas_AllocateTexturesInAtlas(VCAtlas *atlas,
+                                     const VCRenderer *renderer,
+                                     bool clearAndRetryOnOverflow) {
+    VCCachedTexture *cachedTexture = NULL, *tempCachedTexture = NULL;
+    HASH_ITER(hh, atlas->cachedTextures, cachedTexture, tempCachedTexture) {
+        if (cachedTexture->info.uvValid)
+            continue;
+        if (cachedTexture->lastUsedEpoch != renderer->currentEpoch)
+            continue;
+
+        VCPoint2us originIncludingBorder = { 0, 0 };
+        VCSize2us sizeIncludingBorder = {
+            (uint16_t)(cachedTexture->info.uv.size.width + 2),
+            (uint16_t)(cachedTexture->info.uv.size.height + 2),
+        };
+        if (VCAtlas_Allocate(atlas, &originIncludingBorder, &sizeIncludingBorder)) {
+            cachedTexture->info.uv.origin.x = originIncludingBorder.x + 1;
+            cachedTexture->info.uv.origin.y = originIncludingBorder.y + 1;
+            cachedTexture->info.uvValid = true;
+            cachedTexture->info.needsUpload = true;
+            continue;
+        }
+
+        if (!clearAndRetryOnOverflow) {
+            fprintf(stderr, "Couldn't allocate texture in atlas!\n");
+            abort();
+        }
+
+        //fprintf(stderr, "clearing atlas texture!\n");
+        VCAtlas_ClearAtlasTexture(atlas);
+        VCAtlas_AllocateTexturesInAtlas(atlas, renderer, false);
+        return;
+    }
+}
+
+static VCRectus VCTextureInfo_UVIncludingBorder(VCTextureInfo *info)  {
+    VCRectus uv;
+    uv.origin.x = info->uv.origin.x - 1;
+    uv.origin.y = info->uv.origin.y - 1;
+    uv.size.width = info->uv.size.width + 2;
+    uv.size.height = info->uv.size.height + 2;
+    return uv;
+}
+
+void VCAtlas_EnqueueCommandsToUploadTextures(VCAtlas *atlas, VCRenderer *renderer) {
+    VCCachedTexture *cachedTexture = NULL, *tempCachedTexture = NULL;
+    HASH_ITER(hh, atlas->cachedTextures, cachedTexture, tempCachedTexture) {
+        if (!cachedTexture->info.needsUpload)
+            continue;
+
+        VCRenderCommand command;
+        command.command = VC_RENDER_COMMAND_UPLOAD_TEXTURE;
+        command.uv = VCTextureInfo_UVIncludingBorder(&cachedTexture->info);
+        command.pixels = cachedTexture->info.pixels;
+        VCRenderer_EnqueueCommand(renderer, &command);
+
+        cachedTexture->info.needsUpload = false;
+    }
+}
+
+static VCCachedTexture *VCAtlas_CacheTexture(VCAtlas *atlas,
+                                             VCSize2us *size,
+                                             XXH32_hash_t tmemHash,
+                                             uint8_t *pixels,
+                                             uint32_t currentEpoch,
+                                             bool repeatX,
+                                             bool repeatY,
+                                             bool mirrorX,
+                                             bool mirrorY) {
+    VCCachedTexture *cachedTexture = (VCCachedTexture *)malloc(sizeof(VCCachedTexture));
+    cachedTexture->lastUsedEpoch = currentEpoch;
 
     VCSize2us mirrorFactors = { (uint16_t)(mirrorX ? 2 : 1), (uint16_t)(mirrorY ? 2 : 1) };
     VCSize2us sizeIncludingMirror = {
@@ -158,36 +231,19 @@ static void VCAtlas_Upload(VCAtlas *atlas,
         (uint16_t)(sizeIncludingMirror.width + 2),
         (uint16_t)(sizeIncludingMirror.height + 2)
     };
-    VCRectus uvIncludingBorder;
-    if (!VCAtlas_Allocate(atlas, &uvIncludingBorder, &sizeIncludingBorder)) {
-        VCAtlas_Clear(atlas);
-        if (!VCAtlas_Allocate(atlas, &uvIncludingBorder, &sizeIncludingBorder)) {
-            fprintf(stderr, "Couldn't allocate texture in atlas!\n");
-            abort();
-        }
-    }
 
-    info->uv.origin.x = uvIncludingBorder.origin.x + 1;
-    info->uv.origin.y = uvIncludingBorder.origin.y + 1;
-    info->uv.size.width = uvIncludingBorder.size.width - 2;
-    info->uv.size.height = uvIncludingBorder.size.height - 2;
-    info->repeatX = repeatX;
-    info->repeatY = repeatY;
-    info->mirrorX = mirrorX;
-    info->mirrorY = mirrorY;
-    uploadedTexture->info = *info;
-    uploadedTexture->tmemHash = tmemHash;
-    HASH_ADD_INT(atlas->uploadedTextures, tmemHash, uploadedTexture);
+    cachedTexture->tmemHash = tmemHash;
+    HASH_ADD_INT(atlas->cachedTextures, tmemHash, cachedTexture);
     
     // Add a border to prevent bleed.
-    uint8_t *pixelsWithBorder = (uint8_t *)
-        malloc(sizeIncludingBorder.width * sizeIncludingBorder.height * 4);
-    uint32_t stride = size->width * 4;
-    uint32_t strideWithBorder = sizeIncludingBorder.width * 4;
+    size_t dataSize = sizeIncludingBorder.width * sizeIncludingBorder.height * BYTES_PER_PIXEL;
+    uint8_t *pixelsWithBorder = (uint8_t *)malloc(dataSize);
+    atlas->textureBytesUsed += dataSize;
+
+    uint32_t stride = size->width * BYTES_PER_PIXEL;
+    uint32_t strideWithBorder = sizeIncludingBorder.width * BYTES_PER_PIXEL;
     for (uint32_t y = 0; y < size->height; y++) {
-        memcpy(&pixelsWithBorder[(y + 1) * strideWithBorder + 4],
-               &pixels[y * stride],
-               stride);
+        memcpy(&pixelsWithBorder[(y + 1) * strideWithBorder + 4], &pixels[y * stride], stride);
 
         // Replicate a mirrored strip along X if necessary.
         if (mirrorX) {
@@ -243,9 +299,18 @@ static void VCAtlas_Upload(VCAtlas *atlas,
     memset(&pixelsWithBorder[(sizeIncludingMirror.height + 1) * strideWithBorder], '\0', 4);
     memset(&pixelsWithBorder[(sizeIncludingMirror.height + 2) * strideWithBorder - 4], '\0', 4);
 
-    command->command = VC_RENDER_COMMAND_UPLOAD_TEXTURE;
-    command->uv = uvIncludingBorder;
-    command->pixels = pixelsWithBorder;
+    cachedTexture->info.uv.origin.x = 0;
+    cachedTexture->info.uv.origin.y = 0;
+    cachedTexture->info.uv.size.width = sizeIncludingMirror.width;
+    cachedTexture->info.uv.size.height = sizeIncludingMirror.height;
+    cachedTexture->info.repeatX = repeatX;
+    cachedTexture->info.repeatY = repeatY;
+    cachedTexture->info.mirrorX = mirrorX;
+    cachedTexture->info.mirrorY = mirrorY;
+    cachedTexture->info.pixels = pixelsWithBorder;
+    cachedTexture->info.uvValid = false;
+    cachedTexture->info.needsUpload = false;
+    return cachedTexture;
 }
 
 void VCAtlas_Bind(VCAtlas *atlas) {
@@ -278,7 +343,6 @@ void VCAtlas_ProcessUploadCommand(VCAtlas *atlas, VCRenderCommand *command) {
                        GL_RGBA,
                        GL_UNSIGNED_BYTE,
                        command->pixels));
-    free(command->pixels);
 }
 
 static uint8_t *VCAtlas_ConvertTextureToRGBA(VCSize2us *textureSize, gDPTile *tile) {
@@ -338,14 +402,13 @@ static uint8_t *VCAtlas_ConvertBGImageTextureToRGBA(VCSize2us *textureSize) {
     return result;
 }
 
-void VCAtlas_GetOrUploadTexture(VCAtlas *atlas,
-                                VCRenderer *renderer,
-                                VCTextureInfo *textureInfo,
-                                gDPTile *tile) {
+VCCachedTexture *VCAtlas_GetOrUploadTexture(VCAtlas *atlas, VCRenderer *renderer, gDPTile *tile) {
     uint8_t tileIndex = (uint8_t)((ptrdiff_t)(tile - &gDP.tiles[0]) / sizeof(gDP.tiles[0]));
-    if (gDP.textureMode != TEXTUREMODE_BGIMAGE && atlas->textureInfoValid[tileIndex]) {
-        *textureInfo = atlas->textureInfo[tileIndex];
-        return;
+    uint32_t currentEpoch = renderer->currentEpoch;
+    if (gDP.textureMode != TEXTUREMODE_BGIMAGE && atlas->cachedTileTextures[tileIndex] != NULL) {
+        VCCachedTexture *cachedTexture = atlas->cachedTileTextures[tileIndex];
+        cachedTexture->lastUsedEpoch = currentEpoch;
+        return cachedTexture;
     }
 
     VCSize2us textureSize;
@@ -421,7 +484,8 @@ void VCAtlas_GetOrUploadTexture(VCAtlas *atlas,
     }
 
     XXH32_hash_t tmemHash = XXH32_digest(atlas->hashState);
-    if (!VCAtlas_LookUpTextureByTMEMHash(atlas, textureInfo, tmemHash)) {
+    VCCachedTexture *cachedTexture = NULL;
+    if ((cachedTexture = VCAtlas_LookUpTextureByTMEMHash(atlas, tmemHash)) == NULL) {
         if (gDP.textureMode == TEXTUREMODE_FRAMEBUFFER) {
             fprintf(stderr, "*** framebuffer image detected! expect corruption.\n");
         }
@@ -436,36 +500,59 @@ void VCAtlas_GetOrUploadTexture(VCAtlas *atlas,
         bool repeatsY = gDP.textureMode != TEXTUREMODE_BGIMAGE && (tile->cmt & G_TX_CLAMP) == 0;
         bool mirrorX = gDP.textureMode != TEXTUREMODE_BGIMAGE && tile->mirrors && tile->masks != 0;
         bool mirrorY = gDP.textureMode != TEXTUREMODE_BGIMAGE && tile->mirrort && tile->maskt != 0;
-        VCRenderCommand command;
-        VCAtlas_Upload(atlas,
-                       &command,
-                       textureInfo,
-                       &textureSize,
-                       tmemHash,
-                       texturePixels,
-                       repeatsX,
-                       repeatsY,
-                       mirrorX,
-                       mirrorY);
+        cachedTexture = VCAtlas_CacheTexture(atlas,
+                                             &textureSize,
+                                             tmemHash,
+                                             texturePixels,
+                                             renderer->currentEpoch,
+                                             repeatsX,
+                                             repeatsY,
+                                             mirrorX,
+                                             mirrorY);
+        assert(cachedTexture != NULL);
         free(texturePixels);
-        if (command.command != VC_RENDER_COMMAND_NONE)
-            VCRenderer_EnqueueCommand(renderer, &command);
 
         VCDebugger_IncrementSample(renderer->debugger,
                                    &renderer->debugger->stats.texturesUploaded);
     }
 
-    if (gDP.textureMode != TEXTUREMODE_BGIMAGE) {
-        atlas->textureInfo[tileIndex] = *textureInfo;
-        atlas->textureInfoValid[tileIndex] = true;
-    }
+    cachedTexture->lastUsedEpoch = currentEpoch;
+    if (gDP.textureMode != TEXTUREMODE_BGIMAGE)
+        atlas->cachedTileTextures[tileIndex] = cachedTexture;
+    return cachedTexture;
 }
 
 void VCAtlas_InvalidateCache(VCAtlas *atlas) {
-    for (uint32_t i = 0;
-         i < sizeof(atlas->textureInfoValid) / sizeof(atlas->textureInfoValid[0]);
-         i++) {
-        atlas->textureInfoValid[i] = false;
+    for (uint32_t i = 0; i < VC_ATLAS_TILE_COUNT; i++)
+        atlas->cachedTileTextures[i] = NULL;
+}
+
+static void VCCachedTexture_Destroy(VCCachedTexture *cachedTexture) {
+    if (cachedTexture == NULL)
+        return;
+    free(cachedTexture->info.pixels);
+    free(cachedTexture);
+}
+
+void VCAtlas_Trim(VCAtlas *atlas, uint32_t currentEpoch) {
+    VCCachedTexture *cachedTexture = NULL, *tempCachedTexture = NULL;
+    bool cacheNeedsInvalidation = false;
+    HASH_ITER(hh, atlas->cachedTextures, cachedTexture, tempCachedTexture) {
+        if (atlas->textureBytesUsed <= MAX_TEXTURE_BYTES_USED)
+            return;
+        if (cachedTexture->lastUsedEpoch == currentEpoch)
+            continue;
+        VCRectus uv = VCTextureInfo_UVIncludingBorder(&cachedTexture->info);
+        size_t bytesUsedByTexture = uv.size.width * uv.size.height * BYTES_PER_PIXEL;
+        assert(atlas->textureBytesUsed >= bytesUsedByTexture);
+        atlas->textureBytesUsed -= bytesUsedByTexture;
+
+        HASH_DEL(atlas->cachedTextures, cachedTexture);
+        VCCachedTexture_Destroy(cachedTexture);
+        cacheNeedsInvalidation = true;
     }
+
+    if (cacheNeedsInvalidation)
+        VCAtlas_InvalidateCache(atlas);
 }
 

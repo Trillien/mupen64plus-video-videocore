@@ -111,9 +111,12 @@ EXPORT void CALL ProcessDList(void)
     *REG.MI_INTR |= MI_INTR_SP;
     CheckInterrupts();
 
+    VCRenderer_AllocateTexturesAndEnqueueTextureUploadCommands(renderer);
     VCRenderer_CreateNewShaderProgramsIfNecessary(renderer);
+    VCRenderer_PopulateTextureBoundsInBatches(renderer);
     VCRenderer_SendBatchesToRenderThread(renderer, SDL_GetTicks() - beforeProcessTimestamp);
     VCRenderer_SubmitCommands(renderer);
+    VCRenderer_EndFrame(renderer);
 }
 
 EXPORT void CALL ProcessRDPList(void)

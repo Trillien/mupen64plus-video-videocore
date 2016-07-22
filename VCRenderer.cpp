@@ -173,13 +173,13 @@ static void VCRenderer_SetVBOStateForN64Program(VCRenderer *renderer) {
                              GL_SHORT,
                              GL_FALSE,
                              sizeof(VCN64Vertex),
-                             (const GLvoid *)offsetof(VCN64Vertex, texture0Bounds)));
+                             (const GLvoid *)offsetof(VCN64Vertex, texture0)));
     GL(glVertexAttribPointer(3,
                              4,
                              GL_SHORT,
                              GL_FALSE,
                              sizeof(VCN64Vertex),
-                             (const GLvoid *)offsetof(VCN64Vertex, texture1Bounds)));
+                             (const GLvoid *)offsetof(VCN64Vertex, texture1)));
     GL(glVertexAttribPointer(4,
                              4,
                              GL_UNSIGNED_BYTE,
@@ -575,6 +575,7 @@ void VCRenderer_Start(VCRenderer *renderer) {
     VCConfig *config = VCConfig_SharedConfig();
     renderer->windowSize.width = config->displayWidth;
     renderer->windowSize.height = config->displayHeight;
+    renderer->currentEpoch = 0;
     renderer->ready = false;
     renderer->readyMutex = SDL_CreateMutex();
     renderer->readyCond = SDL_CreateCond();
@@ -749,11 +750,12 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
                 n64Vertex->textureUV.y *= (float)(1 << (16 - gSP.textureTile[0]->shiftt));
         }
 
-        VCTextureInfo texture0Info, texture1Info;
-        VCAtlas_GetOrUploadTexture(&renderer->atlas, renderer, &texture0Info, gSP.textureTile[0]);
-        VCAtlas_GetOrUploadTexture(&renderer->atlas, renderer, &texture1Info, gSP.textureTile[1]);
-        VCAtlas_FillTextureBounds(&n64Vertex->texture0Bounds, &texture0Info);
-        VCAtlas_FillTextureBounds(&n64Vertex->texture1Bounds, &texture1Info);
+        n64Vertex->texture0.cachedTexture = VCAtlas_GetOrUploadTexture(&renderer->atlas,
+                                                                       renderer,
+                                                                       gSP.textureTile[0]);
+        n64Vertex->texture1.cachedTexture = VCAtlas_GetOrUploadTexture(&renderer->atlas,
+                                                                       renderer,
+                                                                       gSP.textureTile[1]);
 
         VCColorf shadeColor = { spVertex->r, spVertex->g, spVertex->b, spVertex->a };
         n64Vertex->shade = VCColor_ColorFToColor(shadeColor);
@@ -886,6 +888,26 @@ void VCRenderer_BeginNewFrame(VCRenderer *renderer) {
     renderer->batchesCapacity = INITIAL_BATCHES_CAPACITY;
 }
 
+void VCRenderer_EndFrame(VCRenderer *renderer) {
+    renderer->currentEpoch++;
+}
+
+void VCRenderer_PopulateTextureBoundsInBatches(VCRenderer *renderer) {
+    for (uint32_t batchIndex = 0; batchIndex < renderer->batchesLength; batchIndex++) {
+        VCBatch *batch = &renderer->batches[batchIndex];
+        for (uint32_t vertexIndex = 0; vertexIndex < batch->verticesLength; vertexIndex++) {
+            VCN64Vertex *vertex = &batch->vertices[vertexIndex];
+            VCRects textureBounds = { 0 };
+
+            VCAtlas_FillTextureBounds(&textureBounds, &vertex->texture0.cachedTexture->info);
+            vertex->texture0.textureBounds = textureBounds;
+
+            VCAtlas_FillTextureBounds(&textureBounds, &vertex->texture1.cachedTexture->info);
+            vertex->texture1.textureBounds = textureBounds;
+        }
+    }
+}
+
 void VCRenderer_SendBatchesToRenderThread(VCRenderer *renderer, uint32_t elapsedTime) {
     VCRenderCommand command = { 0 };
     command.command = VC_RENDER_COMMAND_DRAW_BATCHES;
@@ -911,5 +933,11 @@ bool VCRenderer_ShouldCull(VCN64Vertex *triangleVertices, bool cullFront, bool c
     VCPoint3f ap = VCPoint3f_Neg(&a3);
     float dot = VCPoint3f_Dot(&ap, &cross);
     return (dot < 0.0 && cullFront) || (dot > 0.0 && cullBack);
+}
+
+void VCRenderer_AllocateTexturesAndEnqueueTextureUploadCommands(VCRenderer *renderer) {
+    VCAtlas_Trim(&renderer->atlas, renderer->currentEpoch);
+    VCAtlas_AllocateTexturesInAtlas(&renderer->atlas, renderer, true);
+    VCAtlas_EnqueueCommandsToUploadTextures(&renderer->atlas, renderer);
 }
 

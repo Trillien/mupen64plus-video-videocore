@@ -43,11 +43,16 @@ struct VCBlendFlags {
     VCRectf viewport;
 };
 
+union VCN64VertexTextureRef {
+    VCCachedTexture *cachedTexture;
+    VCRects textureBounds;
+};
+
 struct VCN64Vertex {
     VCPoint4f position;
     VCPoint2f textureUV;
-    VCRects texture0Bounds;
-    VCRects texture1Bounds;
+    VCN64VertexTextureRef texture0;
+    VCN64VertexTextureRef texture1;
     VCColor shade;
     VCColor primitive;
     VCColor environment;
@@ -116,6 +121,9 @@ struct VCRenderer {
     VCShaderProgramDescriptorLibrary *shaderProgramDescriptorLibrary;
     VCDebugger *debugger;
 
+    // For RSP thread only.
+    uint32_t currentEpoch;
+
     VCProgram blitProgram;
     GLuint quadVBO;
 
@@ -150,8 +158,11 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
 void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer);
 uint8_t VCRenderer_GetCurrentBlendMode(uint8_t triangleMode);
 void VCRenderer_BeginNewFrame(VCRenderer *renderer);
+void VCRenderer_EndFrame(VCRenderer *renderer);
+void VCRenderer_PopulateTextureBoundsInBatches(VCRenderer *renderer);
 void VCRenderer_SendBatchesToRenderThread(VCRenderer *renderer, uint32_t elapsedTime);
 bool VCRenderer_ShouldCull(VCN64Vertex *triangleVertices, bool cullFront, bool cullBack);
+void VCRenderer_AllocateTexturesAndEnqueueTextureUploadCommands(VCRenderer *renderer);
 
 #endif
 

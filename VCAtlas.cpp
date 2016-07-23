@@ -420,24 +420,8 @@ VCCachedTexture *VCAtlas_GetOrUploadTexture(VCAtlas *atlas, VCRenderer *renderer
         textureSize.height = gSP.bgImage.height;
     }
     
-    XXH32_reset(atlas->hashState, HASH_SEED);
-    XXH32_update(atlas->hashState, &gDP.textureMode, sizeof(gDP.textureMode));
-    if (gDP.textureMode != TEXTUREMODE_BGIMAGE)
-        XXH32_update(atlas->hashState, tile, sizeof(gDPTile));
-    else
-        XXH32_update(atlas->hashState, &gSP.bgImage, sizeof(gSP.bgImage));
-
     uint8_t size = gDP.textureMode != TEXTUREMODE_BGIMAGE ? tile->size : gSP.bgImage.size;
     uint32_t bpp = TextureCache_SizeToBPP(size);
-
-    static uint8_t *buffer = NULL;
-    static size_t bufferSize = 0;
-    size_t neededSize = textureSize.width * textureSize.height * bpp / 8;
-    if (bufferSize < neededSize) {
-        free(buffer);
-        buffer = (uint8_t *)malloc(neededSize);
-        bufferSize = neededSize;
-    }
 
     uint32_t line;
     if (gDP.textureMode != TEXTUREMODE_BGIMAGE) {
@@ -448,10 +432,24 @@ VCCachedTexture *VCAtlas_GetOrUploadTexture(VCAtlas *atlas, VCRenderer *renderer
         line = textureSize.width * bpp / 8;
     }
 
+    XXH32_reset(atlas->hashState, HASH_SEED);
+    XXH32_update(atlas->hashState, &tile->format, sizeof(tile->format));
+    XXH32_update(atlas->hashState, &size, sizeof(size));
+
+    static uint8_t *buffer = NULL;
+    static size_t bufferSize = 0;
+
+    size_t neededSize = textureSize.width * textureSize.height * bpp / 8;
+    if (bufferSize < neededSize) {
+        free(buffer);
+        buffer = (uint8_t *)malloc(neededSize);
+        bufferSize = neededSize;
+    }
+
     // Hash the texture data.
     assert(textureSize.width < 1024 && textureSize.height < 1024);
     if (gDP.textureMode != TEXTUREMODE_BGIMAGE) {
-        for (int t = 0; t < textureSize.height; t++) {
+        for (uint32_t t = 0; t < textureSize.height; t++) {
             uint64_t *scanlineStart = &TMEM[tile->tmem] + t * line;
             memcpy(&buffer[t * textureSize.width * bpp / 8],
                    scanlineStart,
@@ -471,21 +469,24 @@ VCCachedTexture *VCAtlas_GetOrUploadTexture(VCAtlas *atlas, VCRenderer *renderer
     uint32_t palette =
         gDP.textureMode != TEXTUREMODE_BGIMAGE ? tile->palette : gSP.bgImage.palette;
     if (tile->format == G_IM_FMT_CI) {
-        neededSize = 2 * 16;
-        if (bufferSize < neededSize) {
-            free(buffer);
-            buffer = (uint8_t *)malloc(neededSize);
-            bufferSize = neededSize;
-        }
-
-        // TODO: CI4RGBA_RGBA5551
-        memcpy(buffer, &TMEM[256 + (palette << 4)], 2 * 16);
-        XXH32_update(atlas->hashState, buffer, 2 * 16);
+        uint16_t paletteBuffer[16];
+        for (uint32_t entry = 0; entry < 16; entry++)
+            paletteBuffer[entry] = *(uint16_t *)&TMEM[256 + (palette << 4) + entry];
+        XXH32_update(atlas->hashState, paletteBuffer, sizeof(paletteBuffer));
     }
 
     XXH32_hash_t tmemHash = XXH32_digest(atlas->hashState);
     VCCachedTexture *cachedTexture = NULL;
     if ((cachedTexture = VCAtlas_LookUpTextureByTMEMHash(atlas, tmemHash)) == NULL) {
+#ifdef VC_TEXTURE_SPEW
+        fprintf(stderr,
+                "cache miss: format=%d size=%d line=%d size=%dx%d\n",
+                (int)tile->format,
+                (int)tile->size,
+                (int)tile->line,
+                (int)textureSize.width,
+                (int)textureSize.height);
+#endif
         if (gDP.textureMode == TEXTUREMODE_FRAMEBUFFER) {
             fprintf(stderr, "*** framebuffer image detected! expect corruption.\n");
         }

@@ -36,6 +36,9 @@ inline u32 GetCI4IA_RGBA8888( u64 *src, u16 x, u16 i, u8 palette )
 {
 	u8 color4B;
 
+#ifdef VC_TEXTURE_SPEW
+    fprintf(stderr, "CI4IA accessing %d\n", (int)((x>>1)^(i<<1)));
+#endif
 	color4B = ((u8*)src)[(x>>1)^(i<<1)];
 
 	if (x & 1)
@@ -48,6 +51,7 @@ inline u32 GetCI4RGBA_RGBA5551( u64 *src, u16 x, u16 i, u8 palette )
 {
 	u8 color4B;
 
+    //fprintf(stderr, "CI4RGBA accessing %d\n", (int)((x>>1)^(i<<1)));
 	color4B = ((u8*)src)[(x>>1)^(i<<1)];
 
 	if (x & 1)
@@ -60,6 +64,9 @@ inline u32 GetCI4RGBA_RGBA8888( u64 *src, u16 x, u16 i, u8 palette )
 {
 	u8 color4B;
 
+#ifdef VC_TEXTURE_SPEW
+    fprintf(stderr, "CI4RGBA accessing %d", (int)((x>>1)^(i<<1)));
+#endif
 	color4B = ((u8*)src)[(x>>1)^(i<<1)];
 
 	if (x & 1)
@@ -217,7 +224,16 @@ int32_t TextureCache_GetTexel(gDPTile *tile, int32_t s, int32_t t) {
         line <<= 1;
     uint64_t *src = &TMEM[tile->tmem] + line * t;
     int32_t i = (t & 1) << 1;
-    return imageFormat[tile->size][tile->format].Get32(src, s, i, tile->palette);
+#ifdef VC_TEXTURE_SPEW
+    if (tile->format == G_IM_FMT_IA && tile->size == G_IM_SIZ_4b)
+        fprintf(stderr, "getting texel (%d,%d) ", (int)s, (int)t);
+#endif
+    int32_t texel = imageFormat[tile->size][tile->format].Get32(src, s, i, tile->palette);
+#ifdef VC_TEXTURE_SPEW
+    if (tile->format == G_IM_FMT_IA && tile->size == G_IM_SIZ_4b)
+        fprintf(stderr, "\n");
+#endif
+    return texel;
 }
 
 int32_t TextureCache_GetTexelFromBGImage(uint8_t *swapped, int32_t s, int32_t t) {

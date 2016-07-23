@@ -2,6 +2,8 @@
 //
 // Copyright (c) 2016 The mupen64plus-video-videocore Authors
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+
 #include <SDL2/SDL.h>
 #include <assert.h>
 #include <limits.h>
@@ -19,6 +21,7 @@
 #include "VCShaderCompiler.h"
 #include "VCUtils.h"
 #include "gSP.h"
+#include "stb_image_write.h"
 
 #define INITIAL_BATCHES_CAPACITY 8
 #define INITIAL_N64_VERTEX_STORAGE_CAPACITY 1024
@@ -437,6 +440,37 @@ static void VCRenderer_DestroyShaderProgram(VCRenderer *renderer, uint32_t shade
     VCRenderer_DestroyProgram(&program->program);
 }
 
+#ifdef VC_TEXTURE_SPEW
+static void VCRenderer_DumpAtlas(VCRenderer *renderer) {
+    static int outputIndex = 0;
+    char path[256];
+    snprintf(path, 256, "texture%03d.png", (int)outputIndex);
+    char *pixels = (char *)malloc(4 * VC_ATLAS_TEXTURE_SIZE * VC_ATLAS_TEXTURE_SIZE);
+    VCAtlas_Bind(&renderer->atlas);
+    GL(glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels));
+    char *tmp = (char *)malloc(4 * VC_ATLAS_TEXTURE_SIZE);
+    for (unsigned i = 0; i < VC_ATLAS_TEXTURE_SIZE / 2; i++) {
+        memcpy(tmp, &pixels[4 * i * VC_ATLAS_TEXTURE_SIZE], VC_ATLAS_TEXTURE_SIZE * 4);
+        memcpy(&pixels[4 * i * VC_ATLAS_TEXTURE_SIZE],
+               &pixels[4 * (VC_ATLAS_TEXTURE_SIZE - i - 1) * VC_ATLAS_TEXTURE_SIZE],
+               VC_ATLAS_TEXTURE_SIZE * 4);
+        memcpy(&pixels[4 * (VC_ATLAS_TEXTURE_SIZE - i - 1) * VC_ATLAS_TEXTURE_SIZE],
+               tmp,
+               VC_ATLAS_TEXTURE_SIZE * 4);
+    }
+    free(tmp);
+    stbi_write_png(path,
+                   VC_ATLAS_TEXTURE_SIZE,
+                   VC_ATLAS_TEXTURE_SIZE,
+                   4,
+                   pixels,
+                   VC_ATLAS_TEXTURE_SIZE * 4);
+    free(pixels);
+    fprintf(stderr, "wrote %s\n", path);
+    outputIndex++;
+}
+#endif
+
 static int VCRenderer_ThreadMain(void *userData) {
     VCRenderer *renderer = (VCRenderer *)userData;
 
@@ -481,10 +515,17 @@ static int VCRenderer_ThreadMain(void *userData) {
         SDL_CondSignal(renderer->commandsCond);
         SDL_UnlockMutex(renderer->commandsMutex);
 
+#ifdef VC_TEXTURE_SPEW
+        bool hadUploads = false;
+#endif
+
         for (uint32_t commandIndex = 0; commandIndex < commandsLength; commandIndex++) {
             VCRenderCommand *command = &commands[commandIndex];
             switch (command->command) {
             case VC_RENDER_COMMAND_UPLOAD_TEXTURE:
+#ifdef VC_TEXTURE_SPEW
+                hadUploads = true;
+#endif
                 VCAtlas_ProcessUploadCommand(&renderer->atlas, command);
                 break;
             case VC_RENDER_COMMAND_DRAW_BATCHES:
@@ -504,6 +545,11 @@ static int VCRenderer_ThreadMain(void *userData) {
                 break;
             }
         }
+
+#ifdef VC_TEXTURE_SPEW
+        if (hadUploads)
+            VCRenderer_DumpAtlas(renderer);
+#endif
 
         free(commands);
     }

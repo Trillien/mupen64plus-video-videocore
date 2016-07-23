@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static size_t VCUtils_NextPowerOfTwo(size_t n) {
+size_t VCUtils_NextPowerOfTwo(size_t n) {
     n--;
     n |= n >> 1;
     n |= n >> 2;

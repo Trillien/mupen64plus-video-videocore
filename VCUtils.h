@@ -13,6 +13,7 @@ struct VCString {
     size_t cap;
 };
 
+size_t VCUtils_NextPowerOfTwo(size_t n);
 VCString VCString_Create();
 void VCString_Destroy(VCString *string);
 VCString VCString_Duplicate(VCString *string);

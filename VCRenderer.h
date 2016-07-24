@@ -18,11 +18,12 @@
 #define VC_TRIANGLE_MODE_TEXTURE_RECTANGLE  1
 #define VC_TRIANGLE_MODE_RECT_FILL          2
 
-#define VC_BLEND_MODE_DISABLED                                  0
-#define VC_BLEND_MODE_SRC_ONE_DEST_ONE                          1
-#define VC_BLEND_MODE_SRC_ONE_DEST_ZERO                         2
-#define VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA    3
-#define VC_BLEND_MODE_SRC_ZERO_DEST_ONE                         4
+#define VC_GLOBAL_BLEND_MODE_NORMAL     0
+#define VC_GLOBAL_BLEND_MODE_ADD        1
+
+#define VC_SRC_BLEND_MODE_ONE           0
+#define VC_SRC_BLEND_MODE_ZERO          1
+#define VC_SRC_BLEND_MODE_ALPHA         2
 
 #include <SDL2/SDL.h>
 #include <stdint.h>
@@ -39,7 +40,7 @@ struct VCShaderProgramDescriptorLibrary;
 struct VCBlendFlags {
     bool zTest;
     bool zUpdate;
-    uint8_t blendMode;
+    uint8_t globalBlendMode;
     VCRectf viewport;
 };
 
@@ -58,6 +59,7 @@ struct VCN64Vertex {
     VCColor environment;
     uint8_t subprogram;
     uint8_t alphaThreshold;
+    uint8_t sourceBlendMode;
 };
 
 struct VCBlitVertex {
@@ -145,7 +147,7 @@ void VCRenderer_CompileShader(GLuint *shader, GLint shaderType, const char *path
 void VCRenderer_AddVertex(VCRenderer *renderer,
                           VCN64Vertex *vertex,
                           VCBlendFlags *blendFlags,
-                          uint8_t mode,
+                          uint8_t triangleMode,
                           float alphaThreshold);
 void VCRenderer_EnqueueCommand(VCRenderer *renderer, VCRenderCommand *command);
 void VCRenderer_SubmitCommands(VCRenderer *renderer);
@@ -156,7 +158,7 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
                                      uint32_t indexCount,
                                      uint8_t mode);
 void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer);
-uint8_t VCRenderer_GetCurrentBlendMode(uint8_t triangleMode);
+uint8_t VCRenderer_GetCurrentGlobalBlendMode(uint8_t triangleMode);
 void VCRenderer_BeginNewFrame(VCRenderer *renderer);
 void VCRenderer_EndFrame(VCRenderer *renderer);
 void VCRenderer_PopulateTextureBoundsInBatches(VCRenderer *renderer);

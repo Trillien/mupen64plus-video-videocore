@@ -9,7 +9,7 @@ varying vec4 vTexture1Bounds;
 varying vec4 vShade;
 varying vec4 vPrimitive;
 varying vec4 vEnvironment;
-varying vec2 vSubprogramAlphaThreshold;
+varying vec3 vControl;
 
 vec2 AtlasUv(vec4 textureBounds) {
     vec2 uv = vTextureUv;

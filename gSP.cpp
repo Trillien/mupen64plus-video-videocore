@@ -814,7 +814,7 @@ void gSPTriangle( s32 v0, s32 v1, s32 v2, s32 flag )
             VCBlendFlags blendFlags = {
                 gDP.otherMode.depthCompare != 0,
                 gDP.otherMode.depthUpdate != 0,
-                VCRenderer_GetCurrentBlendMode(VC_TRIANGLE_MODE_NORMAL),
+                VCRenderer_GetCurrentGlobalBlendMode(VC_TRIANGLE_MODE_NORMAL),
                 {
                     { gSP.viewport.x, gSP.viewport.y },
                     { gSP.viewport.width, gSP.viewport.height }

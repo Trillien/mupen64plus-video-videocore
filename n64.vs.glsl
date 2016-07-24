@@ -7,7 +7,7 @@ attribute vec4 aTexture1Bounds;
 attribute vec4 aShade;
 attribute vec4 aPrimitive;
 attribute vec4 aEnvironment;
-attribute vec2 aSubprogramAlphaThreshold;
+attribute vec3 aControl;
 
 varying vec2 vTextureUv;
 varying vec4 vTexture0Bounds;
@@ -15,7 +15,7 @@ varying vec4 vTexture1Bounds;
 varying vec4 vShade;
 varying vec4 vPrimitive;
 varying vec4 vEnvironment;
-varying vec2 vSubprogramAlphaThreshold;
+varying vec3 vControl;
 
 void main(void) {
     if (aTexture0Bounds.z != 0.0 && aTexture0Bounds.w != 0.0)
@@ -27,7 +27,7 @@ void main(void) {
     vShade = aShade;
     vPrimitive = aPrimitive;
     vEnvironment = aEnvironment;
-    vSubprogramAlphaThreshold = aSubprogramAlphaThreshold;
+    vControl = aControl;
     gl_Position = aPosition;
 }
 

@@ -714,7 +714,7 @@ void gDPFillRectangle( s32 ulx, s32 uly, s32 lrx, s32 lry )
     VCBlendFlags blendFlags = {
         false,
         false,
-        VCRenderer_GetCurrentBlendMode(VC_TRIANGLE_MODE_RECT_FILL),
+        VCRenderer_GetCurrentGlobalBlendMode(VC_TRIANGLE_MODE_RECT_FILL),
         { { gSP.viewport.x, gSP.viewport.y }, { gSP.viewport.width, gSP.viewport.height } }
     };
     VCRenderer_AddVertex(renderer, &n64Vertices[0], &blendFlags, VC_TRIANGLE_MODE_RECT_FILL, 0.0);
@@ -804,7 +804,7 @@ void gDPTextureRectangle( f32 ulx, f32 uly, f32 lrx, f32 lry, s32 tile, f32 s, f
     VCBlendFlags blendFlags = {
         false,
         false,
-        VCRenderer_GetCurrentBlendMode(VC_TRIANGLE_MODE_TEXTURE_RECTANGLE),
+        VCRenderer_GetCurrentGlobalBlendMode(VC_TRIANGLE_MODE_TEXTURE_RECTANGLE),
         { { gSP.viewport.x, gSP.viewport.y }, { gSP.viewport.width, gSP.viewport.height } }
     };
     VCRenderer_AddVertex(renderer,

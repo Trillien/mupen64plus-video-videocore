@@ -429,7 +429,7 @@ void VCDebugger_DrawDebugOverlay(VCDebugger *debugger, const VCSize2u *windowSiz
                              -24,
                              &position);
     VCDebugger_DrawDebugStat(debugger,
-                             "ms rendering",
+                             "ms render",
                              VCDebugger_MovingAverageOfStat(debugger, &debugger->stats.drawTime),
                              12,
                              16,
@@ -456,7 +456,7 @@ void VCDebugger_DrawDebugOverlay(VCDebugger *debugger, const VCSize2u *windowSiz
                              5,
                              &position);
     VCDebugger_DrawDebugStat(debugger,
-                             "batches",
+                             "draw calls",
                              VCDebugger_MovingAverageOfStat(debugger,
                                                             &debugger->stats.batches),
                              10,

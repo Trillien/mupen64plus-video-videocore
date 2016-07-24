@@ -202,7 +202,7 @@ static void VCRenderer_SetVBOStateForN64Program(VCRenderer *renderer) {
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, environment)));
     GL(glVertexAttribPointer(7,
-                             2,
+                             3,
                              GL_UNSIGNED_BYTE,
                              GL_FALSE,
                              sizeof(VCN64Vertex),
@@ -313,8 +313,9 @@ static bool VCRenderer_CanAddToCurrentBatch(VCRenderer *renderer, VCBlendFlags *
                                              "zTest") &&
         VCRenderer_CheckBlendFlagEquality(batch->blendFlags.zUpdate == blendFlags->zUpdate,
                                           "zUpdate") &&
-        VCRenderer_CheckBlendFlagEquality(batch->blendFlags.blendMode == blendFlags->blendMode,
-                                          "blendMode") &&
+        VCRenderer_CheckBlendFlagEquality(batch->blendFlags.globalBlendMode ==
+                                          blendFlags->globalBlendMode,
+                                          "globalBlendMode") &&
         VCRenderer_CheckBlendFlagEquality(batch->blendFlags.viewport.origin.x ==
                                           blendFlags->viewport.origin.x,
                                           "viewport.origin.x") &&
@@ -329,10 +330,45 @@ static bool VCRenderer_CanAddToCurrentBatch(VCRenderer *renderer, VCBlendFlags *
                                           "viewport.size.height");
 }
 
+static uint8_t VCRenderer_GetCurrentSourceBlendMode(uint8_t triangleMode) {
+    if (triangleMode == VC_TRIANGLE_MODE_TEXTURE_RECTANGLE)
+        return VC_SRC_BLEND_MODE_ALPHA;
+
+    if (gDP.otherMode.cycleType == G_CYC_FILL)
+        return VC_SRC_BLEND_MODE_ALPHA;
+
+    if (gDP.otherMode.forceBlender &&
+        gDP.otherMode.cycleType != G_CYC_COPY &&
+        !gDP.otherMode.alphaCvgSel) {
+        switch (gDP.otherMode.l >> 16) {
+            case 0x0448: // Add
+            case 0x055A:
+                return VC_SRC_BLEND_MODE_ALPHA;
+            case 0x0C08: // 1080 Sky
+            case 0x0F0A: // Used LOTS of places
+                return VC_SRC_BLEND_MODE_ONE;
+            case 0xC810: // Blends fog
+            case 0xC811: // Blends fog
+            case 0x0C18: // Standard interpolated blend
+            case 0x0C19: // Used for antialiasing
+            case 0x0050: // Standard interpolated blend
+            case 0x0055: // Used for antialiasing
+                return VC_SRC_BLEND_MODE_ALPHA;
+            case 0x0FA5: // Seems to be doing just blend color - maybe combiner can be used for this?
+            case 0x5055: // Used in Paper Mario intro, I'm not sure if this is right...
+                return VC_SRC_BLEND_MODE_ZERO;
+            default:
+                return VC_SRC_BLEND_MODE_ALPHA;
+        }
+    }
+
+    return VC_SRC_BLEND_MODE_ONE;
+}
+
 void VCRenderer_AddVertex(VCRenderer *renderer,
                           VCN64Vertex *vertex,
                           VCBlendFlags *blendFlags,
-                          uint8_t mode,
+                          uint8_t triangleMode,
                           float alphaThreshold) {
     if (!VCRenderer_CanAddToCurrentBatch(renderer, blendFlags))
         VCRenderer_AddNewBatch(renderer, blendFlags);
@@ -350,7 +386,7 @@ void VCRenderer_AddVertex(VCRenderer *renderer,
         VCShaderCompiler_CreateSubprogramContext(VCColor_ColorFToColor(primColor),
                                                  VCColor_ColorFToColor(envColor),
                                                  gDP.otherMode.cycleType == G_CYC_2CYCLE,
-                                                 mode);
+                                                 triangleMode);
     VCShaderSubprogramSignature subprogramSignature =
         VCShaderCompiler_GetOrCreateSubprogramSignatureForCurrentCombiner(
                 renderer->shaderSubprogramLibrary,
@@ -359,6 +395,7 @@ void VCRenderer_AddVertex(VCRenderer *renderer,
     vertex->subprogram = VCShaderCompiler_GetOrCreateSubprogramID(&batch->program.table,
                                                                   &subprogramSignature);
     vertex->alphaThreshold = (uint8_t)roundf(alphaThreshold * 255.0);
+    vertex->sourceBlendMode = VCRenderer_GetCurrentSourceBlendMode(triangleMode);
 
     if (batch->verticesLength >= batch->verticesCapacity) {
         batch->verticesCapacity *= 2;
@@ -672,26 +709,16 @@ static void VCRenderer_Draw(VCRenderer *renderer, VCBatch *batches, size_t batch
         GL(glDepthMask(batch->blendFlags.zUpdate ? GL_TRUE : GL_FALSE));
         GL(glDepthFunc(batch->blendFlags.zTest ? GL_LEQUAL : GL_ALWAYS));
 
-        if (batch->blendFlags.blendMode == VC_BLEND_MODE_DISABLED) {
-            GL(glDisable(GL_BLEND));
-        } else {
-            GL(glEnable(GL_BLEND));
-            switch (batch->blendFlags.blendMode) {
-            case VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA:
-                GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-                break;
-            case VC_BLEND_MODE_SRC_ONE_DEST_ONE:
-                GL(glBlendFunc(GL_ONE, GL_ONE));
-                break;
-            case VC_BLEND_MODE_SRC_ONE_DEST_ZERO:
-                GL(glBlendFunc(GL_ONE, GL_ZERO));
-                break;
-            case VC_BLEND_MODE_SRC_ZERO_DEST_ONE:
-                GL(glBlendFunc(GL_ZERO, GL_ONE));
-                break;
-            default:
-                assert(0 && "Unknown blend mode!");
-            }
+        GL(glEnable(GL_BLEND));
+        switch (batch->blendFlags.globalBlendMode) {
+        case VC_GLOBAL_BLEND_MODE_NORMAL:
+            GL(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+            break;
+        case VC_GLOBAL_BLEND_MODE_ADD:
+            GL(glBlendFunc(GL_ONE, GL_ONE));
+            break;
+        default:
+            assert(0 && "Unknown global blend mode!");
         }
 
         GL(glViewport(batch->blendFlags.viewport.origin.x,
@@ -889,12 +916,12 @@ void VCRenderer_CreateNewShaderProgramsIfNecessary(VCRenderer *renderer) {
     }
 }
 
-uint8_t VCRenderer_GetCurrentBlendMode(uint8_t triangleMode) {
+uint8_t VCRenderer_GetCurrentGlobalBlendMode(uint8_t triangleMode) {
     if (triangleMode == VC_TRIANGLE_MODE_TEXTURE_RECTANGLE)
-        return VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA;
+        return VC_GLOBAL_BLEND_MODE_NORMAL;
 
     if (gDP.otherMode.cycleType == G_CYC_FILL)
-        return VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA;
+        return VC_GLOBAL_BLEND_MODE_NORMAL;
 
     if (gDP.otherMode.forceBlender &&
         gDP.otherMode.cycleType != G_CYC_COPY &&
@@ -902,26 +929,13 @@ uint8_t VCRenderer_GetCurrentBlendMode(uint8_t triangleMode) {
         switch (gDP.otherMode.l >> 16) {
             case 0x0448: // Add
             case 0x055A:
-                return VC_BLEND_MODE_SRC_ONE_DEST_ONE;
-            case 0x0C08: // 1080 Sky
-            case 0x0F0A: // Used LOTS of places
-                return VC_BLEND_MODE_SRC_ONE_DEST_ZERO;
-            case 0xC810: // Blends fog
-            case 0xC811: // Blends fog
-            case 0x0C18: // Standard interpolated blend
-            case 0x0C19: // Used for antialiasing
-            case 0x0050: // Standard interpolated blend
-            case 0x0055: // Used for antialiasing
-                return VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA;
-            case 0x0FA5: // Seems to be doing just blend color - maybe combiner can be used for this?
-            case 0x5055: // Used in Paper Mario intro, I'm not sure if this is right...
-                return VC_BLEND_MODE_SRC_ZERO_DEST_ONE;
+                return VC_GLOBAL_BLEND_MODE_ADD;
             default:
-                return VC_BLEND_MODE_SRC_SRC_ALPHA_DEST_ONE_MINUS_SRC_ALPHA;
+                return VC_GLOBAL_BLEND_MODE_NORMAL;
         }
     }
 
-    return VC_BLEND_MODE_DISABLED;
+    return VC_GLOBAL_BLEND_MODE_NORMAL;
 }
 
 void VCRenderer_BeginNewFrame(VCRenderer *renderer) {

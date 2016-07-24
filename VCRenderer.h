@@ -110,9 +110,15 @@ struct VCRenderer {
     size_t commandsLength;
     size_t commandsCapacity;
 
-    bool commandsQueued;
-    SDL_mutex *commandsMutex;
-    SDL_cond *commandsCond;
+    // For RSP thread use only.
+    uint32_t commandsSubmitted;
+
+    uint32_t commandsQueued;
+    SDL_mutex *commandsQueuedMutex;
+    SDL_cond *commandsQueuedCond;
+    uint32_t commandsDequeued;
+    SDL_mutex *commandsDequeuedMutex;
+    SDL_cond *commandsDequeuedCond;
 
     // For use by RSP thread only. The render thread may not touch these!
     VCBatch *batches;

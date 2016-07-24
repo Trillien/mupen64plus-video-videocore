@@ -543,21 +543,27 @@ static int VCRenderer_ThreadMain(void *userData) {
 
     VCRenderer_Init(renderer, screen, context);
 
+    uint32_t commandsProcessed = 0;
     while (1) {
-        SDL_LockMutex(renderer->commandsMutex);
-        while (!renderer->commandsQueued) {
-            SDL_CondWait(renderer->commandsCond, renderer->commandsMutex);
+        SDL_LockMutex(renderer->commandsQueuedMutex);
+        while (commandsProcessed == renderer->commandsQueued) {
+#if 0
+            fprintf(stderr,
+                    "render thread waiting, commandsQueued=%d\n",
+                    (int)renderer->commandsQueued);
+#endif
+            SDL_CondWait(renderer->commandsQueuedCond, renderer->commandsQueuedMutex);
         }
+        SDL_UnlockMutex(renderer->commandsQueuedMutex);
 
+        SDL_LockMutex(renderer->commandsDequeuedMutex);
         VCRenderCommand *commands = renderer->commands;
         size_t commandsLength = renderer->commandsLength;
         renderer->commands = NULL;
         renderer->commandsLength = renderer->commandsCapacity = 0;
-
-        renderer->commandsQueued = false;
-
-        SDL_CondSignal(renderer->commandsCond);
-        SDL_UnlockMutex(renderer->commandsMutex);
+        renderer->commandsDequeued++;
+        SDL_CondSignal(renderer->commandsDequeuedCond);
+        SDL_UnlockMutex(renderer->commandsDequeuedMutex);
 
 #ifdef VC_TEXTURE_SPEW
         bool hadUploads = false;
@@ -596,12 +602,15 @@ static int VCRenderer_ThreadMain(void *userData) {
 #endif
 
         free(commands);
+
+        commandsProcessed++;
     }
     return 0;
 }
 
 void VCRenderer_EnqueueCommand(VCRenderer *renderer, VCRenderCommand *command) {
-    SDL_LockMutex(renderer->commandsMutex);
+    SDL_LockMutex(renderer->commandsQueuedMutex);
+    SDL_LockMutex(renderer->commandsDequeuedMutex);
     if (renderer->commandsLength >= renderer->commandsCapacity) {
         renderer->commandsCapacity =
             renderer->commandsCapacity == 0 ? 1 : 2 * renderer->commandsCapacity;
@@ -611,16 +620,27 @@ void VCRenderer_EnqueueCommand(VCRenderer *renderer, VCRenderCommand *command) {
     }
     renderer->commands[renderer->commandsLength] = *command;
     renderer->commandsLength++;
-    SDL_UnlockMutex(renderer->commandsMutex);
+    SDL_UnlockMutex(renderer->commandsDequeuedMutex);
+    SDL_UnlockMutex(renderer->commandsQueuedMutex);
 }
 
 void VCRenderer_SubmitCommands(VCRenderer *renderer) {
-    SDL_LockMutex(renderer->commandsMutex);
-    renderer->commandsQueued = true;
-    SDL_CondSignal(renderer->commandsCond);
-    while (renderer->commandsQueued)
-        SDL_CondWait(renderer->commandsCond, renderer->commandsMutex);
-    SDL_UnlockMutex(renderer->commandsMutex);
+    SDL_LockMutex(renderer->commandsQueuedMutex);
+    renderer->commandsQueued++;
+    SDL_CondSignal(renderer->commandsQueuedCond);
+    SDL_UnlockMutex(renderer->commandsQueuedMutex);
+
+    SDL_LockMutex(renderer->commandsDequeuedMutex);
+    while (renderer->commandsSubmitted == renderer->commandsDequeued) {
+#if 0
+        fprintf(stderr,
+                "RSP thread waiting, commandsDequeued=%d\n",
+                (int)renderer->commandsDequeued);
+#endif
+        SDL_CondWait(renderer->commandsDequeuedCond, renderer->commandsDequeuedMutex);
+    }
+    SDL_UnlockMutex(renderer->commandsDequeuedMutex);
+    renderer->commandsSubmitted++;
 }
 
 static void VCRenderer_Init(VCRenderer *renderer, SDL_Window *window, SDL_GLContext context) {
@@ -650,9 +670,14 @@ static void VCRenderer_Init(VCRenderer *renderer, SDL_Window *window, SDL_GLCont
     renderer->commands = NULL;
     renderer->commandsLength = 0;
     renderer->commandsCapacity = 0;
-    renderer->commandsQueued = false;
-    renderer->commandsMutex = SDL_CreateMutex();
-    renderer->commandsCond = SDL_CreateCond();
+    renderer->commandsSubmitted = 0;
+
+    renderer->commandsQueued = 0;
+    renderer->commandsQueuedMutex = SDL_CreateMutex();
+    renderer->commandsQueuedCond = SDL_CreateCond();
+    renderer->commandsDequeued = 0;
+    renderer->commandsDequeuedMutex = SDL_CreateMutex();
+    renderer->commandsDequeuedCond = SDL_CreateCond();
 
     SDL_LockMutex(renderer->readyMutex);
     renderer->ready = true;

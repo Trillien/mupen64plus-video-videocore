@@ -13,6 +13,10 @@ struct VCString {
     size_t cap;
 };
 
+inline float VCUtils_MinF(float a, float b) {
+    return (a < b) ? a : b;
+}
+
 size_t VCUtils_NextPowerOfTwo(size_t n);
 VCString VCString_Create();
 void VCString_Destroy(VCString *string);

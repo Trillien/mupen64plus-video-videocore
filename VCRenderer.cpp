@@ -185,20 +185,20 @@ static void VCRenderer_SetVBOStateForN64Program(VCRenderer *renderer) {
                              (const GLvoid *)offsetof(VCN64Vertex, texture1)));
     GL(glVertexAttribPointer(4,
                              4,
-                             GL_UNSIGNED_BYTE,
-                             GL_TRUE,
+                             GL_FLOAT,
+                             GL_FALSE,
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, shade)));
     GL(glVertexAttribPointer(5,
                              4,
-                             GL_UNSIGNED_BYTE,
-                             GL_TRUE,
+                             GL_FLOAT,
+                             GL_FALSE,
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, primitive)));
     GL(glVertexAttribPointer(6,
                              4,
-                             GL_UNSIGNED_BYTE,
-                             GL_TRUE,
+                             GL_FLOAT,
+                             GL_FALSE,
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, environment)));
     GL(glVertexAttribPointer(7,
@@ -375,25 +375,32 @@ void VCRenderer_AddVertex(VCRenderer *renderer,
 
     VCBatch *batch = &renderer->batches[renderer->batchesLength - 1];
 
-    VCColorf envColor = { gDP.envColor.r, gDP.envColor.g, gDP.envColor.b, gDP.envColor.a };
-    VCColorf primColor = {
-        gDP.primColor.r,
-        gDP.primColor.g,
-        gDP.primColor.b,
-        gDP.primColor.a
-    };
-    VCShaderSubprogramContext subprogramContext =
-        VCShaderCompiler_CreateSubprogramContext(VCColor_ColorFToColor(primColor),
-                                                 VCColor_ColorFToColor(envColor),
-                                                 gDP.otherMode.cycleType == G_CYC_2CYCLE,
-                                                 triangleMode);
-    VCShaderSubprogramSignature subprogramSignature =
-        VCShaderCompiler_GetOrCreateSubprogramSignatureForCurrentCombiner(
-                renderer->shaderSubprogramLibrary,
-                &subprogramContext);
-    assert(!batch->programIDPresent);
-    vertex->subprogram = VCShaderCompiler_GetOrCreateSubprogramID(&batch->program.table,
-                                                                  &subprogramSignature);
+    if (renderer->currentSubprogramID == VC_INVALID_SUBPROGRAM_ID ||
+            triangleMode != renderer->triangleModeForCachedSubprogramID) {
+        VCColorf envColor = { gDP.envColor.r, gDP.envColor.g, gDP.envColor.b, gDP.envColor.a };
+        VCColorf primColor = {
+            gDP.primColor.r,
+            gDP.primColor.g,
+            gDP.primColor.b,
+            gDP.primColor.a
+        };
+        VCShaderSubprogramContext subprogramContext =
+            VCShaderCompiler_CreateSubprogramContext(VCColor_ColorFToColor(primColor),
+                                                     VCColor_ColorFToColor(envColor),
+                                                     gDP.otherMode.cycleType == G_CYC_2CYCLE,
+                                                     triangleMode);
+        VCShaderSubprogramSignature subprogramSignature =
+            VCShaderCompiler_GetOrCreateSubprogramSignatureForCurrentCombiner(
+                    renderer->shaderSubprogramLibrary,
+                    &subprogramContext);
+        assert(!batch->programIDPresent);
+
+        renderer->currentSubprogramID =
+            VCShaderCompiler_GetOrCreateSubprogramID(&batch->program.table, &subprogramSignature);
+        renderer->triangleModeForCachedSubprogramID = triangleMode;
+    }
+    vertex->subprogram = renderer->currentSubprogramID;
+
     vertex->alphaThreshold = (uint8_t)roundf(alphaThreshold * 255.0);
     vertex->sourceBlendMode = VCRenderer_GetCurrentSourceBlendMode(triangleMode);
 
@@ -659,6 +666,8 @@ void VCRenderer_Start(VCRenderer *renderer) {
     renderer->windowSize.width = config->displayWidth;
     renderer->windowSize.height = config->displayHeight;
     renderer->currentEpoch = 0;
+    renderer->currentSubprogramID = VC_INVALID_SUBPROGRAM_ID;
+    renderer->triangleModeForCachedSubprogramID = 0;
     renderer->ready = false;
     renderer->readyMutex = SDL_CreateMutex();
     renderer->readyCond = SDL_CreateCond();
@@ -831,7 +840,7 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
                                                                        gSP.textureTile[1]);
 
         VCColorf shadeColor = { spVertex->r, spVertex->g, spVertex->b, spVertex->a };
-        n64Vertex->shade = VCColor_ColorFToColor(shadeColor);
+        n64Vertex->shade = shadeColor;
 
         VCColorf primColor = {
             gDP.primColor.r,
@@ -846,7 +855,7 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
                 (primColor.a != 0.0 && primColor.a != 1.0))
             fprintf(stderr, "primColor=%f,%f,%f,%f\n", primColor.r, primColor.g, primColor.b, primColor.a);
 #endif
-        n64Vertex->primitive = VCColor_ColorFToColor(primColor);
+        n64Vertex->primitive = primColor;
 
         VCColorf envColor = { gDP.envColor.r, gDP.envColor.g, gDP.envColor.b, gDP.envColor.a };
 #if 0
@@ -856,7 +865,7 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
                 (envColor.a != 0.0 && envColor.a != 1.0))
             fprintf(stderr, "envColor=%f,%f,%f,%f\n", envColor.r, envColor.g, envColor.b, envColor.a);
 #endif
-        n64Vertex->environment = VCColor_ColorFToColor(envColor);
+        n64Vertex->environment = envColor;
 #if 0
         switch (mode) {
         case VC_TRIANGLE_MODE_NORMAL:
@@ -980,10 +989,14 @@ void VCRenderer_SendBatchesToRenderThread(VCRenderer *renderer, uint32_t elapsed
     VCRenderer_EnqueueCommand(renderer, &command);
 }
 
-bool VCRenderer_ShouldCull(VCN64Vertex *triangleVertices, bool cullFront, bool cullBack) {
-    VCPoint4f a = triangleVertices[0].position;
-    VCPoint4f b = triangleVertices[1].position;
-    VCPoint4f c = triangleVertices[2].position;
+bool VCRenderer_ShouldCull(SPVertex *va,
+                           SPVertex *vb,
+                           SPVertex *vc,
+                           bool cullFront,
+                           bool cullBack) {
+    VCPoint4f a = { va->x, va->y, va->z, va->w };
+    VCPoint4f b = { vb->x, vb->y, vb->z, vb->w };
+    VCPoint4f c = { vc->x, vc->y, vc->z, vc->w };
     VCPoint3f a3 = VCPoint4f_Dehomogenize(&a);
     VCPoint3f b3 = VCPoint4f_Dehomogenize(&b);
     VCPoint3f c3 = VCPoint4f_Dehomogenize(&c);
@@ -999,5 +1012,9 @@ void VCRenderer_AllocateTexturesAndEnqueueTextureUploadCommands(VCRenderer *rend
     VCAtlas_Trim(&renderer->atlas, renderer->currentEpoch);
     VCAtlas_AllocateTexturesInAtlas(&renderer->atlas, renderer, true);
     VCAtlas_EnqueueCommandsToUploadTextures(&renderer->atlas, renderer);
+}
+
+void VCRenderer_InvalidateCachedSubprogramID(VCRenderer *renderer) {
+    renderer->currentSubprogramID = VC_INVALID_SUBPROGRAM_ID;
 }
 

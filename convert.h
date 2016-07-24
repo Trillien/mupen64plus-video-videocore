@@ -192,15 +192,12 @@ inline void QWordInterleave( void *mem, u32 numDWords )
 
 inline u32 swapdword( u32 value )
 {
-	return ((value & 0xff000000) >> 24) |
-	       ((value & 0x00ff0000) >>  8) |
-	       ((value & 0x0000ff00) <<  8) |
-		   ((value & 0x000000ff) << 24);
+    return __builtin_bswap32(value);
 }
 
 inline u16 swapword( u16 value )
 {
-	return (value << 8) | (value >> 8);
+    return __builtin_bswap16(value);
 }
 
 inline u16 RGBA8888_RGBA4444( u32 color )

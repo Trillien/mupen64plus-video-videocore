@@ -3,11 +3,14 @@ CXX=g++
 
 ifdef DEBUG
 CFLAGS?=-O0 -g -DVCDEBUG
+CXXFLAGS?=-O0 -g -DVCDEBUG
 else
 CFLAGS?=-O2
+CXXFLAGS?=-O2
 endif
 
-CFLAGS+=-Wall -Wno-parentheses -std=c++11
+CFLAGS+=-Wall -Wno-parentheses
+CXXFLAGS+=-Wall -Wno-parentheses -std=c++11
 LD=g++
 LDFLAGS=
 LIBS=
@@ -15,6 +18,7 @@ LIBS=
 ifeq ($(shell uname -m),armv7l)
 LIBS+=-L/opt/vc/lib -lGLESv2 -lEGL
 CFLAGS+=-DHAVE_OPENGLES2 -pthread
+CXXFLAGS+=-DHAVE_OPENGLES2 -pthread
 LDFLAGS+=-Wl,-Bsymbolic
 SO=so
 else
@@ -80,7 +84,7 @@ mupen64plus-video-videocore.$(SO): $(OBJECTS)
 	$(CC) -c $(CFLAGS) -o $@ $<
 
 %.o: %.cpp
-	$(CXX) -c $(CFLAGS) -o $@ $<
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
 
 .PHONY: clean install
 

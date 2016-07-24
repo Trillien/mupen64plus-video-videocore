@@ -29,6 +29,7 @@ void gDPSetOtherMode( u32 mode0, u32 mode1 )
 	gDP.otherMode.l = mode1;
 
 	gDP.changed |= CHANGED_RENDERMODE | CHANGED_CYCLETYPE | CHANGED_ALPHACOMPARE;
+    VCRenderer_InvalidateCachedSubprogramID(VCRenderer_SharedRenderer());
 
 #ifdef DEBUG
 	DebugMsg( DEBUG_HIGH | DEBUG_HANDLED, "gDPSetOtherMode( %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s, %s | %s | %s%s%s%s%s | %s | %s%s%s );\n",
@@ -84,6 +85,7 @@ void gDPSetCycleType( u32 type )
 	gDP.otherMode.cycleType = type;
 
 	gDP.changed |= CHANGED_CYCLETYPE;
+    VCRenderer_InvalidateCachedSubprogramID(VCRenderer_SharedRenderer());
 
 #ifdef DEBUG
 	DebugMsg( DEBUG_HIGH | DEBUG_HANDLED, "gDPSetCycleType( %s );\n",
@@ -231,6 +233,7 @@ void gDPSetCombine( s32 muxs0, s32 muxs1 )
 	gDP.combine.muxs1 = muxs1;
 
 	gDP.changed |= CHANGED_COMBINE;
+    VCRenderer_InvalidateCachedSubprogramID(VCRenderer_SharedRenderer());
 
 #ifdef DEBUG
 	DebugMsg( DEBUG_HIGH | DEBUG_HANDLED | DEBUG_COMBINE, "gDPSetCombine( %s, %s, %s, %s, %s, %s, %s, %s,\n",
@@ -324,6 +327,7 @@ void gDPSetEnvColor( u32 r, u32 g, u32 b, u32 a )
 	gDP.envColor.a = a * 0.0039215689f;
 
 	gDP.changed |= CHANGED_COMBINE_COLORS;
+    VCRenderer_InvalidateCachedSubprogramID(VCRenderer_SharedRenderer());
 
 #ifdef DEBUG
 	DebugMsg( DEBUG_HIGH | DEBUG_HANDLED | DEBUG_COMBINE, "gDPSetEnvColor( %i, %i, %i, %i );\n",
@@ -384,6 +388,7 @@ void gDPSetPrimColor( u32 m, u32 l, u32 r, u32 g, u32 b, u32 a )
 	gDP.primColor.a = a * 0.0039215689f;
 
 	gDP.changed |= CHANGED_COMBINE_COLORS;
+    VCRenderer_InvalidateCachedSubprogramID(VCRenderer_SharedRenderer());
 
 #ifdef DEBUG
 	DebugMsg( DEBUG_HIGH | DEBUG_HANDLED | DEBUG_COMBINE, "gDPSetPrimColor( %i, %i, %i, %i, %i, %i );\n",

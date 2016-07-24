@@ -321,17 +321,6 @@ GLint VCAtlas_GetGLTexture(VCAtlas *atlas) {
     return atlas->texture;
 }
 
-void VCAtlas_FillTextureBounds(VCRects *textureBounds, VCTextureInfo *textureInfo) {
-    textureBounds->origin.x = (int16_t)textureInfo->uv.origin.x;
-    textureBounds->origin.y = (int16_t)textureInfo->uv.origin.y;
-    textureBounds->size.width = (int16_t)textureInfo->uv.size.width;
-    textureBounds->size.height = (int16_t)textureInfo->uv.size.height;
-    if (textureInfo->repeatX)
-        textureBounds->size.width = -textureBounds->size.width;
-    if (textureInfo->repeatY)
-        textureBounds->size.height = -textureBounds->size.height;
-}
-
 void VCAtlas_ProcessUploadCommand(VCAtlas *atlas, VCRenderCommand *command) {
     GL(glBindTexture(GL_TEXTURE_2D, atlas->texture));
     GL(glTexSubImage2D(GL_TEXTURE_2D,

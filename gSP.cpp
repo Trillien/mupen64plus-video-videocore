@@ -792,6 +792,15 @@ void gSPTriangle( s32 v0, s32 v1, s32 v2, s32 flag )
 			 (gSP.vertices[v2].zClip < -0.1f)))
 			 return;
 
+        // Don't bother with culled triangles.
+        if (VCRenderer_ShouldCull(&gSP.vertices[v0],
+                                  &gSP.vertices[v1],
+                                  &gSP.vertices[v2],
+                                  (gSP.geometryMode & G_CULL_FRONT) != 0,
+                                  (gSP.geometryMode & G_CULL_BACK) != 0)) {
+            return;
+        }
+
         VCN64Vertex n64Vertices[3];
         uint32_t indices[3] = { (uint32_t)v0, (uint32_t)v1, (uint32_t)v2 };
         VCRenderer *renderer = VCRenderer_SharedRenderer();
@@ -802,40 +811,36 @@ void gSPTriangle( s32 v0, s32 v1, s32 v2, s32 flag )
                                         3,
                                         VC_TRIANGLE_MODE_NORMAL);
 
-        if (!VCRenderer_ShouldCull(n64Vertices,
-                                   (gSP.geometryMode & G_CULL_FRONT) != 0,
-                                   (gSP.geometryMode & G_CULL_BACK) != 0)) {
-            float alphaThreshold;
-            if (gDP.otherMode.alphaCompare == G_AC_THRESHOLD && !gDP.otherMode.alphaCvgSel)
-                alphaThreshold = fmaxf(gDP.blendColor.a, 1.0f / 255.0f);
-            else
-                alphaThreshold = gDP.otherMode.cvgXAlpha ? 0.5f : 0.0f;
+        float alphaThreshold;
+        if (gDP.otherMode.alphaCompare == G_AC_THRESHOLD && !gDP.otherMode.alphaCvgSel)
+            alphaThreshold = fmaxf(gDP.blendColor.a, 1.0f / 255.0f);
+        else
+            alphaThreshold = gDP.otherMode.cvgXAlpha ? 0.5f : 0.0f;
 
-            VCBlendFlags blendFlags = {
-                gDP.otherMode.depthCompare != 0,
-                gDP.otherMode.depthUpdate != 0,
-                VCRenderer_GetCurrentGlobalBlendMode(VC_TRIANGLE_MODE_NORMAL),
-                {
-                    { gSP.viewport.x, gSP.viewport.y },
-                    { gSP.viewport.width, gSP.viewport.height }
-                }
-            };
-            VCRenderer_AddVertex(renderer,
-                                 &n64Vertices[0],
-                                 &blendFlags,
-                                 VC_TRIANGLE_MODE_NORMAL,
-                                 alphaThreshold);
-            VCRenderer_AddVertex(renderer,
-                                 &n64Vertices[1],
-                                 &blendFlags,
-                                 VC_TRIANGLE_MODE_NORMAL,
-                                 alphaThreshold);
-            VCRenderer_AddVertex(renderer,
-                                 &n64Vertices[2],
-                                 &blendFlags,
-                                 VC_TRIANGLE_MODE_NORMAL,
-                                 alphaThreshold);
-        }
+        VCBlendFlags blendFlags = {
+            gDP.otherMode.depthCompare != 0,
+            gDP.otherMode.depthUpdate != 0,
+            VCRenderer_GetCurrentGlobalBlendMode(VC_TRIANGLE_MODE_NORMAL),
+            {
+                { gSP.viewport.x, gSP.viewport.y },
+                { gSP.viewport.width, gSP.viewport.height }
+            }
+        };
+        VCRenderer_AddVertex(renderer,
+                             &n64Vertices[0],
+                             &blendFlags,
+                             VC_TRIANGLE_MODE_NORMAL,
+                             alphaThreshold);
+        VCRenderer_AddVertex(renderer,
+                             &n64Vertices[1],
+                             &blendFlags,
+                             VC_TRIANGLE_MODE_NORMAL,
+                             alphaThreshold);
+        VCRenderer_AddVertex(renderer,
+                             &n64Vertices[2],
+                             &blendFlags,
+                             VC_TRIANGLE_MODE_NORMAL,
+                             alphaThreshold);
 	}
 #ifdef DEBUG
 	else

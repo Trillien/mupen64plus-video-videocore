@@ -25,6 +25,8 @@
 #define VC_SRC_BLEND_MODE_ZERO          1
 #define VC_SRC_BLEND_MODE_ALPHA         2
 
+#define VC_INVALID_SUBPROGRAM_ID        ((uint32_t)~0)
+
 #include <SDL2/SDL.h>
 #include <stdint.h>
 #include "VCAtlas.h"
@@ -54,9 +56,9 @@ struct VCN64Vertex {
     VCPoint2f textureUV;
     VCN64VertexTextureRef texture0;
     VCN64VertexTextureRef texture1;
-    VCColor shade;
-    VCColor primitive;
-    VCColor environment;
+    VCColorf shade;
+    VCColorf primitive;
+    VCColorf environment;
     uint8_t subprogram;
     uint8_t alphaThreshold;
     uint8_t sourceBlendMode;
@@ -126,6 +128,10 @@ struct VCRenderer {
     // For RSP thread only.
     uint32_t currentEpoch;
 
+    // For RSP thread only.
+    uint32_t currentSubprogramID;
+    uint8_t triangleModeForCachedSubprogramID;
+
     VCProgram blitProgram;
     GLuint quadVBO;
 
@@ -163,8 +169,13 @@ void VCRenderer_BeginNewFrame(VCRenderer *renderer);
 void VCRenderer_EndFrame(VCRenderer *renderer);
 void VCRenderer_PopulateTextureBoundsInBatches(VCRenderer *renderer);
 void VCRenderer_SendBatchesToRenderThread(VCRenderer *renderer, uint32_t elapsedTime);
-bool VCRenderer_ShouldCull(VCN64Vertex *triangleVertices, bool cullFront, bool cullBack);
+bool VCRenderer_ShouldCull(SPVertex *va,
+                           SPVertex *vb,
+                           SPVertex *vc,
+                           bool cullFront,
+                           bool cullBack);
 void VCRenderer_AllocateTexturesAndEnqueueTextureUploadCommands(VCRenderer *renderer);
+void VCRenderer_InvalidateCachedSubprogramID(VCRenderer *renderer);
 
 #endif
 

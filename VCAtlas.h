@@ -48,6 +48,17 @@ struct VCAtlas {
     XXH32_state_t *hashState;
 };
 
+inline void VCAtlas_FillTextureBounds(VCRects *textureBounds, VCTextureInfo *textureInfo) {
+    textureBounds->origin.x = (int16_t)textureInfo->uv.origin.x;
+    textureBounds->origin.y = (int16_t)textureInfo->uv.origin.y;
+    textureBounds->size.width = (int16_t)textureInfo->uv.size.width;
+    textureBounds->size.height = (int16_t)textureInfo->uv.size.height;
+    if (textureInfo->repeatX)
+        textureBounds->size.width = -textureBounds->size.width;
+    if (textureInfo->repeatY)
+        textureBounds->size.height = -textureBounds->size.height;
+}
+
 void VCAtlas_Create(VCAtlas *atlas);
 bool VCAtlas_Allocate(VCAtlas *atlas, VCRectus *result, VCSize2us *size);
 void VCAtlas_Bind(VCAtlas *atlas);

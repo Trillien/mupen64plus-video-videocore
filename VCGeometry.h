@@ -5,6 +5,7 @@
 #ifndef VC_GEOMETRY_H
 #define VC_GEOMETRY_H
 
+#include "VCUtils.h"
 #include <stdint.h>
 
 struct VCPoint2f {
@@ -109,7 +110,16 @@ struct VCColorf {
     float a;
 };
 
-VCColor VCColor_ColorFToColor(VCColorf colorf);
+inline VCColor VCColor_ColorFToColor(VCColorf colorf) {
+    VCColor color = {
+        (uint8_t)(VCUtils_MinF(colorf.r, 1.0) * 255.0),
+        (uint8_t)(VCUtils_MinF(colorf.g, 1.0) * 255.0),
+        (uint8_t)(VCUtils_MinF(colorf.b, 1.0) * 255.0),
+        (uint8_t)(VCUtils_MinF(colorf.a, 1.0) * 255.0),
+    };
+    return color;
+}
+
 VCPoint3f VCPoint3f_Cross(const VCPoint3f *a, const VCPoint3f *b);
 VCPoint3f VCPoint3f_Sub(const VCPoint3f *a, const VCPoint3f *b);
 VCPoint3f VCPoint4f_Dehomogenize(const VCPoint4f *a);

@@ -460,7 +460,7 @@ static void VCRenderer_CompileShaderProgram(VCRenderer *renderer,
     GL(glBindAttribLocation(program->program.program, 4, "aShade"));
     GL(glBindAttribLocation(program->program.program, 5, "aPrimitive"));
     GL(glBindAttribLocation(program->program.program, 6, "aEnvironment"));
-    GL(glBindAttribLocation(program->program.program, 7, "aSubprogramAlphaThreshold"));
+    GL(glBindAttribLocation(program->program.program, 7, "aControl"));
     GL(glLinkProgram(program->program.program));
     GL(glUseProgram(program->program.program));
 

@@ -164,7 +164,12 @@ struct gDPInfo
 	struct
 	{
 		f32 r, g, b, a;
-	} fogColor,  blendColor, envColor;
+	} fogColor, blendColor;
+
+    struct
+    {
+        u8 r, g, b, a;
+    } envColor;
 
 	struct
 	{
@@ -175,7 +180,7 @@ struct gDPInfo
 	struct
 	{
 		u32 m;
-		f32 l, r, g, b, a;
+		u8 l, r, g, b, a;
 	} primColor;
 
 	struct

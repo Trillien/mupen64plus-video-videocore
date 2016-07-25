@@ -321,10 +321,10 @@ void gDPSetDepthImage( u32 address )
 
 void gDPSetEnvColor( u32 r, u32 g, u32 b, u32 a )
 {
-	gDP.envColor.r = r * 0.0039215689f;
-	gDP.envColor.g = g * 0.0039215689f;
-	gDP.envColor.b = b * 0.0039215689f;
-	gDP.envColor.a = a * 0.0039215689f;
+	gDP.envColor.r = r;
+	gDP.envColor.g = g;
+	gDP.envColor.b = b;
+	gDP.envColor.a = a;
 
 	gDP.changed |= CHANGED_COMBINE_COLORS;
     VCRenderer_InvalidateCachedSubprogramID(VCRenderer_SharedRenderer());
@@ -381,11 +381,11 @@ void gDPSetFillColor( u32 c )
 void gDPSetPrimColor( u32 m, u32 l, u32 r, u32 g, u32 b, u32 a )
 {
 	gDP.primColor.m = m;
-	gDP.primColor.l = l * 0.0039215689f;
-	gDP.primColor.r = r * 0.0039215689f;
-	gDP.primColor.g = g * 0.0039215689f;
-	gDP.primColor.b = b * 0.0039215689f;
-	gDP.primColor.a = a * 0.0039215689f;
+	gDP.primColor.l = l;
+	gDP.primColor.r = r;
+	gDP.primColor.g = g;
+	gDP.primColor.b = b;
+	gDP.primColor.a = a;
 
 	gDP.changed |= CHANGED_COMBINE_COLORS;
     VCRenderer_InvalidateCachedSubprogramID(VCRenderer_SharedRenderer());

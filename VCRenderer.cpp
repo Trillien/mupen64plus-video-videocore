@@ -185,20 +185,20 @@ static void VCRenderer_SetVBOStateForN64Program(VCRenderer *renderer) {
                              (const GLvoid *)offsetof(VCN64Vertex, texture1)));
     GL(glVertexAttribPointer(4,
                              4,
-                             GL_FLOAT,
-                             GL_FALSE,
+                             GL_UNSIGNED_BYTE,
+                             GL_TRUE,
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, shade)));
     GL(glVertexAttribPointer(5,
                              4,
-                             GL_FLOAT,
-                             GL_FALSE,
+                             GL_UNSIGNED_BYTE,
+                             GL_TRUE,
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, primitive)));
     GL(glVertexAttribPointer(6,
                              4,
-                             GL_FLOAT,
-                             GL_FALSE,
+                             GL_UNSIGNED_BYTE,
+                             GL_TRUE,
                              sizeof(VCN64Vertex),
                              (const GLvoid *)offsetof(VCN64Vertex, environment)));
     GL(glVertexAttribPointer(7,
@@ -377,16 +377,11 @@ void VCRenderer_AddVertex(VCRenderer *renderer,
 
     if (renderer->currentSubprogramID == VC_INVALID_SUBPROGRAM_ID ||
             triangleMode != renderer->triangleModeForCachedSubprogramID) {
-        VCColorf envColor = { gDP.envColor.r, gDP.envColor.g, gDP.envColor.b, gDP.envColor.a };
-        VCColorf primColor = {
-            gDP.primColor.r,
-            gDP.primColor.g,
-            gDP.primColor.b,
-            gDP.primColor.a
-        };
+        VCColor envColor = { gDP.envColor.r, gDP.envColor.g, gDP.envColor.b, gDP.envColor.a };
+        VCColor primColor = { gDP.primColor.r, gDP.primColor.g, gDP.primColor.b, gDP.primColor.a };
         VCShaderSubprogramContext subprogramContext =
-            VCShaderCompiler_CreateSubprogramContext(VCColor_ColorFToColor(primColor),
-                                                     VCColor_ColorFToColor(envColor),
+            VCShaderCompiler_CreateSubprogramContext(primColor,
+                                                     envColor,
                                                      gDP.otherMode.cycleType == G_CYC_2CYCLE,
                                                      triangleMode);
         VCShaderSubprogramSignature subprogramSignature =
@@ -865,14 +860,9 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
                                                                        gSP.textureTile[1]);
 
         VCColorf shadeColor = { spVertex->r, spVertex->g, spVertex->b, spVertex->a };
-        n64Vertex->shade = shadeColor;
+        n64Vertex->shade = VCColor_ColorFToColor(shadeColor);
 
-        VCColorf primColor = {
-            gDP.primColor.r,
-            gDP.primColor.g,
-            gDP.primColor.b,
-            gDP.primColor.a
-        };
+        VCColor primColor = { gDP.primColor.r, gDP.primColor.g, gDP.primColor.b, gDP.primColor.a };
 #if 0
         if ((primColor.r != 0.0 && primColor.r != 1.0) ||
                 (primColor.g != 0.0 && primColor.g != 1.0) ||
@@ -882,7 +872,7 @@ void VCRenderer_InitTriangleVertices(VCRenderer *renderer,
 #endif
         n64Vertex->primitive = primColor;
 
-        VCColorf envColor = { gDP.envColor.r, gDP.envColor.g, gDP.envColor.b, gDP.envColor.a };
+        VCColor envColor = { gDP.envColor.r, gDP.envColor.g, gDP.envColor.b, gDP.envColor.a };
 #if 0
         if ((envColor.r != 0.0 && envColor.r != 1.0) ||
                 (envColor.g != 0.0 && envColor.g != 1.0) ||

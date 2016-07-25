@@ -56,9 +56,9 @@ struct VCN64Vertex {
     VCPoint2f textureUV;
     VCN64VertexTextureRef texture0;
     VCN64VertexTextureRef texture1;
-    VCColorf shade;
-    VCColorf primitive;
-    VCColorf environment;
+    VCColor shade;
+    VCColor primitive;
+    VCColor environment;
     uint8_t subprogram;
     uint8_t alphaThreshold;
     uint8_t sourceBlendMode;

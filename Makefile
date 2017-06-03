@@ -73,7 +73,7 @@ SOURCES_C =	xxhash.c
 
 OBJECTS = $(SOURCES_CXX:%.cpp=%.o) $(SOURCES_C:%.c=%.o)
 
-SHADERS = blit.fs.glsl blit.vs.glsl debug.fs.glsl debug.vs.glsl n64.fs.glsl n64.vs.glsl
+SHADERS = blit.fs.glsl blit.vs.glsl debug.fs.glsl debug.vs.glsl n64.fs.glsl n64.vs.glsl n64.inc.fs.glsl
 
 all:	mupen64plus-video-videocore.$(SO)
 

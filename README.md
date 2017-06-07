@@ -67,6 +67,10 @@ settings are:
 * `debug.display`: Set to true to enable a debug display that displays moving averages of various
   statistics relevant to performance. The default is false.
 
+## Requirements
+
+SDL2 2.0.5 at least is necessary on Raspberry Pi 2/3.
+
 ## Contributing
 
 Contributions to improve games are more than welcome! I likely won't have a huge amount of time to
